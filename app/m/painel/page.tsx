@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { TerritorialMap } from "@/components/territorial-map"
@@ -11,7 +11,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { FileText, Users, CheckCircle2, Clock, AlertCircle } from "lucide-react"
-import type { Request, Farmer } from "@/lib/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import type { Request, Farmer, Institution } from "@/lib/types"
 import Link from "next/link"
 
 interface Dashboard {
@@ -28,19 +29,40 @@ export default function PainelPage() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [requests, setRequests] = useState<Request[]>([])
   const [farmers, setFarmers] = useState<Farmer[]>([])
+  const [institutions, setInstitutions] = useState<Institution[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
+  const [municipalities, setMunicipalities] = useState<Array<{ id: string; name: string; state: string }>>([])
+  const [selectedState, setSelectedState] = useState<string>("all")
+  const [selectedMunicipalityId, setSelectedMunicipalityId] = useState<string>("")
   const { toast } = useToast()
 
   useEffect(() => {
-    loadDashboard()
+    void init()
   }, [])
 
-  const loadDashboard = async () => {
+  const init = async () => {
+    await loadMunicipalities()
+    await loadDashboard("")
+  }
+
+  const loadMunicipalities = async () => {
+    try {
+      const res = await fetch("/api/geo/municipalities")
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar territórios")
+      setMunicipalities(json.data.municipalities || [])
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Erro", description: e?.message || "Não foi possível carregar territórios." })
+    }
+  }
+
+  const loadDashboard = async (municipalityId?: string) => {
     setLoading(true)
     try {
-      const response = await fetch("/api/m/dashboard")
+      const qs = municipalityId ? `?municipalityId=${encodeURIComponent(municipalityId)}` : ""
+      const response = await fetch(`/api/m/dashboard${qs}`)
       if (!response.ok) throw new Error()
       const data = await response.json()
       if (!data?.ok) throw new Error()
@@ -48,6 +70,13 @@ export default function PainelPage() {
       setDashboard(data.data.dashboard)
       setRequests(data.data.requests || [])
       setFarmers(data.data.farmers || [])
+      setInstitutions(data.data.institutions || [])
+
+      // define selecionados (primeiro load do gestor)
+      if (!selectedMunicipalityId && data.data?.municipality?.id) {
+        setSelectedMunicipalityId(data.data.municipality.id)
+        setSelectedState(data.data.municipality.state || "all")
+      }
     } catch (error) {
       toast({
         variant: "destructive",
@@ -111,6 +140,17 @@ export default function PainelPage() {
     }
   }
 
+  const states = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of municipalities) set.add(m.state)
+    return Array.from(set).sort()
+  }, [municipalities])
+
+  const filteredMunicipalities = useMemo(() => {
+    if (selectedState === "all") return municipalities
+    return municipalities.filter((m) => m.state === selectedState)
+  }, [municipalities, selectedState])
+
   if (loading) {
     return (
       <div className="p-6 space-y-6">
@@ -131,6 +171,80 @@ export default function PainelPage() {
         <h1 className="text-2xl font-bold text-foreground">Painel Territorial</h1>
         <p className="text-sm text-muted-foreground">Visão integrada da cadeia de segurança alimentar do município</p>
       </div>
+
+      {/* Filtro de território (multi-território) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Território</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">País</div>
+              <Select value="BR" onValueChange={() => {}}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BR">Brasil</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium">UF</div>
+              <Select
+                value={selectedState}
+                onValueChange={(v) => {
+                  setSelectedState(v)
+                  if (v !== "all") {
+                    const first = municipalities.find((m) => m.state === v)
+                    setSelectedMunicipalityId(first?.id || "")
+                    void loadDashboard(first?.id || "")
+                  } else {
+                    setSelectedMunicipalityId("")
+                    void loadDashboard("")
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar UF" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {states.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Município</div>
+              <Select
+                value={selectedMunicipalityId || "none"}
+                onValueChange={(v) => {
+                  const id = v === "none" ? "" : v
+                  setSelectedMunicipalityId(id)
+                  void loadDashboard(id)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar município" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Padrão do gestor</SelectItem>
+                  {filteredMunicipalities.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} ({m.state})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* KPIs */}
       <div className="grid md:grid-cols-5 gap-4">
@@ -205,6 +319,7 @@ export default function PainelPage() {
             <TerritorialMap
               requests={requests}
               farmers={farmers}
+              institutions={institutions}
               onRequestClick={setSelectedRequest}
               centerLat={dashboard?.centerLat}
               centerLng={dashboard?.centerLng}

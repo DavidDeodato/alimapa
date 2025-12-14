@@ -20,8 +20,17 @@ const CreateSchema = z.object({
         unit: z.string().min(1),
       }),
     )
-    .min(1),
+    .min(0),
   isDraft: z.boolean().optional().default(false),
+}).superRefine((val, ctx) => {
+  // Permite rascunho incompleto, mas exige itens ao ENVIAR.
+  if (!val.isDraft && (!Array.isArray(val.items) || val.items.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Adicione pelo menos 1 item antes de enviar.",
+      path: ["items"],
+    })
+  }
 })
 
 export async function GET() {
@@ -77,7 +86,10 @@ export async function POST(req: Request) {
     return err("JSON inválido no corpo da requisição.", 400)
   }
   const parsed = CreateSchema.safeParse(body)
-  if (!parsed.success) return err("Payload inválido.", 400)
+  if (!parsed.success) {
+    const msg = parsed.error.issues?.[0]?.message || "Payload inválido."
+    return err(msg, 400)
+  }
 
   const needBy = new Date(parsed.data.needByDate)
   if (Number.isNaN(needBy.getTime())) return err("Prazo de entrega inválido.", 400)

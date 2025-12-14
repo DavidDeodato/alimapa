@@ -1,36 +1,45 @@
-import { redirect } from "next/navigation"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
+"use client"
+
+import { use } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { StatusBadge } from "@/components/status-badge"
 import { ProgramBadge } from "@/components/program-badge"
 import { Calendar, Package, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
+import type { Request } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
 
-export default async function InstituicaoRequestDetailPage({ params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || (session.user as any).role !== "INSTITUICAO") redirect("/auth/login")
+export default function InstituicaoRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [request, setRequest] = useState<Request | null>(null)
 
-  const { id } = params
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/i/requests/${id}`)
+        const json = await res.json()
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar requisição")
+        if (!cancelled) setRequest(json.data.request)
+      } catch (e: any) {
+        toast({ title: "Erro", description: e?.message || "Falha ao carregar requisição", variant: "destructive" })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [id, toast])
 
-  const request = {
-    id,
-    institutionId: "inst-001",
-    institutionName: "Escola Municipal João Paulo II",
-    program: "PNAE" as const,
-    status: "FULFILLING" as const,
-    urgency: 4 as const,
-    needByDate: "2025-01-20",
-    items: [
-      { id: "1", productName: "Alface", quantity: 50, unit: "kg" },
-      { id: "2", productName: "Tomate", quantity: 30, unit: "kg" },
-    ],
-    address: "Rua das Flores, 123",
-    justification: "Reposição da merenda escolar para 500 alunos da rede municipal.",
-    createdAt: "2025-01-10T10:00:00Z",
-    updatedAt: "2025-01-12T16:00:00Z",
-  }
+  if (loading) return <div className="text-sm text-muted-foreground">Carregando...</div>
+  if (!request) return <div className="text-sm text-muted-foreground">Requisição não encontrada.</div>
 
   return (
     <div className="space-y-6">

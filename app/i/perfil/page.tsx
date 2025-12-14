@@ -7,6 +7,43 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "next-auth/react"
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
+import L from "leaflet"
+
+// Fix do Marker do Leaflet no bundler (senão o ícone some)
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+})
+
+const pulseIcon = L.divIcon({
+  className: "",
+  html: '<div class="pulse-marker"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+})
+
+function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onLocationSelect(e.latlng.lat, e.latlng.lng)
+    },
+  })
+  return null
+}
+
+function MapResizer({ center }: { center: [number, number] }) {
+  const map = useMap()
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize()
+      map.setView(center)
+    }, 50)
+  }, [map, center])
+  return null
+}
 
 type MeResponse = {
   ok: true
@@ -50,6 +87,11 @@ export default function InstituicaoPerfilPage() {
 
   const avatarUrl = me?.user.avatarUrl || null
   const avatarInitial = useMemo(() => (displayName || "U")[0], [displayName])
+  const center = useMemo<[number, number]>(() => {
+    const la = lat.trim() ? Number(lat) : NaN
+    const ln = lng.trim() ? Number(lng) : NaN
+    return [Number.isFinite(la) ? la : -15.78, Number.isFinite(ln) ? ln : -47.93]
+  }, [lat, lng])
 
   const load = async () => {
     setLoading(true)
@@ -236,7 +278,33 @@ export default function InstituicaoPerfilPage() {
             </div>
             <div className="space-y-2">
               <Label>Endereço</Label>
-              <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+              <div className="flex gap-2">
+                <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-transparent"
+                  onClick={async () => {
+                    const q = address.trim()
+                    if (q.length < 3) {
+                      toast({ title: "Endereço inválido", description: "Digite um endereço com pelo menos 3 caracteres.", variant: "destructive" })
+                      return
+                    }
+                    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
+                    const json = await res.json().catch(() => null)
+                    if (!res.ok || !json?.ok) {
+                      toast({ title: "Endereço não encontrado", description: json?.error || "Tente outro endereço.", variant: "destructive" })
+                      return
+                    }
+                    setAddress(String(json.data.displayName || q))
+                    setLat(String(json.data.lat))
+                    setLng(String(json.data.lng))
+                    toast({ title: "Localização encontrada" })
+                  }}
+                >
+                  Buscar
+                </Button>
+              </div>
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
@@ -247,6 +315,23 @@ export default function InstituicaoPerfilPage() {
             <div className="space-y-2">
               <Label>Lng</Label>
               <Input value={lng} onChange={(e) => setLng(e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Ou clique no mapa para marcar</Label>
+            <div className="h-[320px] rounded-lg overflow-hidden border">
+              <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <MapResizer center={center} />
+                <LocationPicker
+                  onLocationSelect={(la, ln) => {
+                    setLat(String(la))
+                    setLng(String(ln))
+                    toast({ title: "Localização marcada", description: `${la.toFixed(5)}, ${ln.toFixed(5)}` })
+                  }}
+                />
+                <Marker position={center} icon={pulseIcon} />
+              </MapContainer>
             </div>
           </div>
         </div>

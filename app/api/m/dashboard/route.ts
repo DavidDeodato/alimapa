@@ -2,17 +2,20 @@ import { ok, err } from "@/lib/api-response"
 import { prisma } from "@/lib/db"
 import { requireRole } from "@/lib/auth-server"
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireRole("GESTOR")
   if (!auth.ok) return err(auth.error, 401)
 
-  const municipalityId = auth.user.municipalityId
+  const url = new URL(req.url)
+  const requestedMunicipalityId = url.searchParams.get("municipalityId") || null
+
+  const municipalityId = requestedMunicipalityId ?? auth.user.municipalityId
   if (!municipalityId) return err("Usuário gestor sem município associado", 500)
 
   const municipality = await prisma.municipality.findUnique({ where: { id: municipalityId } })
   if (!municipality) return err("Município não encontrado", 500)
 
-  const [requests, farmers] = await Promise.all([
+  const [requests, farmers, institutions] = await Promise.all([
     prisma.request.findMany({
       where: { municipalityId },
       include: { institution: true, items: true },
@@ -20,6 +23,11 @@ export async function GET() {
       take: 50,
     }),
     prisma.farmer.findMany({
+      where: { municipalityId },
+      orderBy: { createdAt: "asc" },
+      take: 200,
+    }),
+    prisma.institution.findMany({
       where: { municipalityId },
       orderBy: { createdAt: "asc" },
       take: 200,
@@ -37,6 +45,13 @@ export async function GET() {
   }
 
   const data = {
+    municipality: {
+      id: municipality.id,
+      name: municipality.name,
+      state: municipality.state,
+      centerLat: municipality.centerLat ?? -15.78,
+      centerLng: municipality.centerLng ?? -47.93,
+    },
     dashboard: counts,
     requests: requests.map((r) => ({
       id: r.id,
@@ -69,6 +84,15 @@ export async function GET() {
       lng: f.lng ?? undefined,
       address: f.address ?? undefined,
       phone: f.phone ?? undefined,
+    })),
+    institutions: institutions.map((i) => ({
+      id: i.id,
+      name: i.name,
+      type: i.type,
+      lat: i.lat ?? undefined,
+      lng: i.lng ?? undefined,
+      address: i.address ?? undefined,
+      phone: i.phone ?? undefined,
     })),
   }
 

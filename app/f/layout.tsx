@@ -6,6 +6,7 @@ import { AuthLayout } from "@/components/auth-layout"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+
 import { FileText, FolderOpen, Store, MessageCircle } from "lucide-react"
 
 export default async function AgricultorLayout({ children }: { children: React.ReactNode }) {

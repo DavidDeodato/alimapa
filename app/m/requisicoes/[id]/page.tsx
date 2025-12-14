@@ -1,7 +1,7 @@
 "use client"
 
 import { use } from "react"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { StatusBadge } from "@/components/status-badge"
@@ -28,91 +28,77 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import type { Offer, Request } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
 
 export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [request, setRequest] = useState<Request | null>(null)
+  const [offers, setOffers] = useState<Offer[]>([])
   const [isAgentRunning, setIsAgentRunning] = useState(false)
   const [agentStep, setAgentStep] = useState(0)
   const [matchedFarmers, setMatchedFarmers] = useState<any[]>([])
   const [agentProgress, setAgentProgress] = useState(0)
 
-  // Mock data
-  const request = {
-    id,
-    institutionId: "inst-001",
-    institutionName: "Escola Municipal João Paulo II",
-    program: "PNAE" as const,
-    status: "VALIDATED" as const,
-    urgency: 4 as const,
-    needByDate: "2025-01-20",
-    items: [
-      { id: "1", productName: "Alface", quantity: 50, unit: "kg" },
-      { id: "2", productName: "Tomate", quantity: 30, unit: "kg" },
-    ],
-    address: "Rua das Flores, 123",
-    justification: "Reposição da merenda escolar para 500 alunos da rede municipal.",
-    createdAt: "2025-01-10T10:00:00Z",
-    updatedAt: "2025-01-10T10:00:00Z",
+  const canValidate = request?.status === "SUBMITTED"
+  const canOrchestrate = request?.status === "VALIDATED"
+
+  const refresh = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/m/requests/${id}`)
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar requisição")
+      setRequest(json.data.request)
+      setOffers(json.data.offers ?? [])
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao carregar requisição", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
   }
+
+  useEffect(() => {
+    refresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
   const runAIAgent = async () => {
     setIsAgentRunning(true)
     setAgentStep(0)
     setAgentProgress(0)
 
-    // Step 1: Analyzing request
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setAgentStep(1)
-    setAgentProgress(25)
+    try {
+      setAgentStep(1)
+      setAgentProgress(25)
+      const res = await fetch(`/api/requests/${id}/orchestrate`, { method: "POST" })
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao orquestrar")
+      await refresh()
 
-    // Step 2: Finding farmers
-    await new Promise((resolve) => setTimeout(resolve, 2500))
-    setAgentStep(2)
-    setAgentProgress(50)
-
-    // Step 3: Matching requirements
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setMatchedFarmers([
-      {
-        id: "f1",
-        name: "João da Silva",
-        distance: 5.2,
-        products: ["Alface", "Tomate"],
+      // lista de candidatos simplificada (a UI atual espera esse shape)
+      const candidates = (json.data?.offers ?? []).map((o: any) => ({
+        id: o.farmerId,
+        name: o.farmerName,
+        distance: o.distance ?? null,
+        products: (o.items ?? []).map((it: any) => it.productName),
         canFulfill: 100,
-        score: 98,
-        reason: "Distância muito próxima (5.2km) e possui todos os produtos solicitados em estoque",
-      },
-      {
-        id: "f2",
-        name: "Maria Santos",
-        distance: 8.5,
-        products: ["Alface"],
-        canFulfill: 50,
-        score: 85,
-        reason: "Possui alface em estoque mas não possui tomate. Distância razoável (8.5km)",
-      },
-      {
-        id: "f3",
-        name: "Pedro Oliveira",
-        distance: 12.3,
-        products: ["Alface", "Tomate"],
-        canFulfill: 100,
-        score: 75,
-        reason: "Possui todos os produtos mas a distância é maior (12.3km), aumentando custos de transporte",
-      },
-    ])
-    setAgentStep(3)
-    setAgentProgress(75)
-
-    // Step 4: Ready to send
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    setAgentStep(4)
-    setAgentProgress(100)
+        score: 0,
+        reason: "Proposta gerada pelo orquestrador.",
+      }))
+      setMatchedFarmers(candidates)
+      setAgentStep(4)
+      setAgentProgress(100)
+      toast({ title: "Orquestração concluída", description: "Propostas geradas e conversas iniciadas (se aplicável)." })
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao orquestrar", variant: "destructive" })
+    }
   }
 
   const sendProposals = async (farmerIds: string[]) => {
     setAgentStep(5)
-    await new Promise((resolve) => setTimeout(resolve, 2000))
     setIsAgentRunning(false)
     setAgentStep(0)
   }
@@ -133,11 +119,15 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
               Requisição #{id}
             </h1>
-            <StatusBadge status={request.status} />
-            <ProgramBadge program={request.program} />
-            <UrgencyBadge level={request.urgency} />
+            {request ? (
+              <>
+                <StatusBadge status={request.status} />
+                <ProgramBadge program={request.program} />
+                <UrgencyBadge level={request.urgency} />
+              </>
+            ) : null}
           </div>
-          <p className="text-muted-foreground">{request.institutionName}</p>
+          <p className="text-muted-foreground">{request?.institutionName ?? (loading ? "Carregando..." : "")}</p>
         </div>
         <Button variant="outline" asChild>
           <Link href="/m/requisicoes">
@@ -157,7 +147,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
                 <div>
                   <div className="text-sm font-medium">Endereço</div>
-                  <div className="text-sm text-muted-foreground">{request.address}</div>
+                  <div className="text-sm text-muted-foreground">{request?.address ?? "-"}</div>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -165,7 +155,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 <div>
                   <div className="text-sm font-medium">Prazo de entrega</div>
                   <div className="text-sm text-muted-foreground">
-                    {new Date(request.needByDate).toLocaleDateString("pt-BR")}
+                    {request ? new Date(request.needByDate).toLocaleDateString("pt-BR") : "-"}
                   </div>
                 </div>
               </div>
@@ -173,7 +163,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <Separator className="my-4" />
             <div>
               <div className="text-sm font-medium mb-2">Justificativa</div>
-              <p className="text-sm text-muted-foreground">{request.justification}</p>
+              <p className="text-sm text-muted-foreground">{request?.justification ?? "-"}</p>
             </div>
           </Card>
 
@@ -184,7 +174,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               Itens Solicitados
             </h2>
             <div className="space-y-3">
-              {request.items.map((item) => (
+              {(request?.items ?? []).map((item) => (
                 <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <div className="font-medium">{item.productName}</div>
                   <div className="text-sm text-muted-foreground">
@@ -196,14 +186,27 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           {/* Ações condicionais */}
-          {request.status === "SUBMITTED" && (
+          {canValidate && (
             <Card className="p-6 bg-blue-50 border-blue-200">
               <h2 className="text-xl font-semibold mb-4">Ações Necessárias</h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Esta requisição foi enviada pela instituição e aguarda validação.
               </p>
               <div className="flex gap-3">
-                <Button className="flex-1">
+                <Button
+                  className="flex-1"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/requests/${id}/validate`, { method: "POST" })
+                      const json = await res.json()
+                      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao validar")
+                      toast({ title: "Requisição validada" })
+                      await refresh()
+                    } catch (e: any) {
+                      toast({ title: "Erro", description: e?.message || "Falha ao validar", variant: "destructive" })
+                    }
+                  }}
+                >
                   <CheckCircle2 className="h-4 w-4 mr-2" />
                   Validar Requisição
                 </Button>
@@ -215,13 +218,15 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </Card>
           )}
 
-          {request.status === "VALIDATED" && (
+          {canOrchestrate && (
             <Card className="p-6 bg-green-50 border-green-200">
               <h2 className="text-xl font-semibold mb-4">Próxima Etapa</h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Requisição validada. Você pode agora rodar o orquestrador para encontrar agricultores compatíveis.
               </p>
-              <Button className="w-full">Rodar Orquestrador</Button>
+              <Button className="w-full" onClick={runAIAgent} disabled={isAgentRunning}>
+                {isAgentRunning ? "Orquestrando..." : "Rodar Orquestrador"}
+              </Button>
             </Card>
           )}
 

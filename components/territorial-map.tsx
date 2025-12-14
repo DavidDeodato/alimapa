@@ -32,7 +32,7 @@ export function TerritorialMap({
   const [map, setMap] = useState<any>(null)
   const [showRequests, setShowRequests] = useState(true)
   const [showFarmers, setShowFarmers] = useState(true)
-  const [showInstitutions, setShowInstitutions] = useState(false)
+  const [showInstitutions, setShowInstitutions] = useState(true)
   const [layersOpen, setLayersOpen] = useState(false)
 
   useEffect(() => {
@@ -105,9 +105,20 @@ export function TerritorialMap({
 
             const icon = L.divIcon({
               className: "custom-marker",
-              html: `<div style="background-color: ${urgencyColors[request.urgency]}; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>`,
-              iconSize: [24, 24],
-              iconAnchor: [12, 12],
+              html: `
+                <div style="
+                  width: 30px; height: 30px; border-radius: 9999px;
+                  background: ${urgencyColors[request.urgency]};
+                  border: 2px solid rgba(255,255,255,0.95);
+                  box-shadow: 0 6px 16px rgba(0,0,0,0.22);
+                  display: flex; align-items: center; justify-content: center;
+                  ${request.urgency >= 4 ? "animation: pulse 1.6s infinite;" : ""}
+                ">
+                  <span style="color: white; font-size: 16px; line-height: 1; transform: translateY(-1px);">!</span>
+                </div>
+              `,
+              iconSize: [30, 30],
+              iconAnchor: [15, 15],
             })
 
             const marker = L.marker([request.lat, request.lng], { icon })
@@ -131,9 +142,19 @@ export function TerritorialMap({
           if (farmer.lat && farmer.lng) {
             const icon = L.divIcon({
               className: "custom-marker",
-              html: `<div style="background-color: #10b981; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>`,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
+              html: `
+                <div style="
+                  width: 26px; height: 26px; border-radius: 9999px;
+                  background: #10b981;
+                  border: 2px solid rgba(255,255,255,0.95);
+                  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+                  display: flex; align-items: center; justify-content: center;
+                ">
+                  <span style="color: white; font-size: 14px; line-height: 1;">🌿</span>
+                </div>
+              `,
+              iconSize: [26, 26],
+              iconAnchor: [13, 13],
             })
 
             const marker = L.marker([farmer.lat, farmer.lng], { icon })
@@ -157,9 +178,19 @@ export function TerritorialMap({
           if (institution.lat && institution.lng) {
             const icon = L.divIcon({
               className: "custom-marker",
-              html: `<div style="background-color: #3b82f6; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"></div>`,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
+              html: `
+                <div style="
+                  width: 26px; height: 26px; border-radius: 9999px;
+                  background: #3b82f6;
+                  border: 2px solid rgba(255,255,255,0.95);
+                  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+                  display: flex; align-items: center; justify-content: center;
+                ">
+                  <span style="color: white; font-size: 14px; line-height: 1;">🏫</span>
+                </div>
+              `,
+              iconSize: [26, 26],
+              iconAnchor: [13, 13],
             })
 
             L.marker([institution.lat, institution.lng], { icon })
@@ -176,12 +207,6 @@ export function TerritorialMap({
 
   return (
     <div className="relative w-full h-full">
-      <link
-        rel="stylesheet"
-        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossOrigin=""
-      />
       <div ref={mapRef} className="w-full h-full rounded-lg" />
 
       {/* Layer control */}

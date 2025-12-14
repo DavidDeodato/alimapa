@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
+"use client"
+
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,59 +11,46 @@ import { ProgramBadge } from "@/components/program-badge"
 import { UrgencyBadge } from "@/components/urgency-badge"
 import { Search, Filter } from "lucide-react"
 import type { Request } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
 
-export default async function RequisicoesPage() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || (session.user as any).role !== "GESTOR") redirect("/auth/login")
+export default function RequisicoesPage() {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [requests, setRequests] = useState<Request[]>([])
+  const [q, setQ] = useState("")
+  const [status, setStatus] = useState("all")
+  const [program, setProgram] = useState("all")
 
-  // Mock data - replace with API call
-  const requests: Request[] = [
-    {
-      id: "req-001",
-      institutionId: "inst-001",
-      institutionName: "Escola Municipal João Paulo II",
-      program: "PNAE",
-      status: "SUBMITTED",
-      urgency: 4,
-      needByDate: "2025-01-20",
-      items: [
-        { id: "1", productName: "Alface", quantity: 50, unit: "kg" },
-        { id: "2", productName: "Tomate", quantity: 30, unit: "kg" },
-      ],
-      address: "Rua das Flores, 123",
-      createdAt: "2025-01-10T10:00:00Z",
-      updatedAt: "2025-01-10T10:00:00Z",
-    },
-    {
-      id: "req-002",
-      institutionId: "inst-002",
-      institutionName: "Creche Municipal Pequenos Sonhos",
-      program: "PNAE",
-      status: "VALIDATED",
-      urgency: 3,
-      needByDate: "2025-01-25",
-      items: [{ id: "3", productName: "Banana", quantity: 100, unit: "kg" }],
-      address: "Av. Central, 456",
-      createdAt: "2025-01-08T14:00:00Z",
-      updatedAt: "2025-01-11T09:00:00Z",
-    },
-    {
-      id: "req-003",
-      institutionId: "inst-003",
-      institutionName: "Hospital Municipal",
-      program: "PAA",
-      status: "FULFILLING",
-      urgency: 5,
-      needByDate: "2025-01-15",
-      items: [
-        { id: "4", productName: "Cenoura", quantity: 80, unit: "kg" },
-        { id: "5", productName: "Batata", quantity: 120, unit: "kg" },
-      ],
-      address: "Praça da Saúde, 789",
-      createdAt: "2025-01-05T08:00:00Z",
-      updatedAt: "2025-01-12T16:00:00Z",
-    },
-  ]
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      try {
+        const res = await fetch("/api/m/requests")
+        const json = await res.json()
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar requisições")
+        if (!cancelled) setRequests(json.data.requests)
+      } catch (e: any) {
+        toast({ title: "Erro", description: e?.message || "Falha ao carregar requisições", variant: "destructive" })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [toast])
+
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase()
+    return requests.filter((r) => {
+      const matchQ = !qq || r.institutionName.toLowerCase().includes(qq) || (r.address ?? "").toLowerCase().includes(qq)
+      const matchStatus = status === "all" || r.status === status
+      const matchProgram = program === "all" || r.program === program
+      return matchQ && matchStatus && matchProgram
+    })
+  }, [requests, q, status, program])
 
   return (
     <div className="p-8 space-y-8">
@@ -80,9 +67,14 @@ export default async function RequisicoesPage() {
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Input placeholder="Buscar por instituição..." className="pl-10 h-11" />
+            <Input
+              placeholder="Buscar por instituição..."
+              className="pl-10 h-11"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </div>
-          <Select defaultValue="all">
+          <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="w-full md:w-[200px] h-11">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
@@ -94,7 +86,7 @@ export default async function RequisicoesPage() {
               <SelectItem value="CLOSED">Concluída</SelectItem>
             </SelectContent>
           </Select>
-          <Select defaultValue="all">
+          <Select value={program} onValueChange={setProgram}>
             <SelectTrigger className="w-full md:w-[200px] h-11">
               <SelectValue placeholder="Programa" />
             </SelectTrigger>
@@ -123,7 +115,20 @@ export default async function RequisicoesPage() {
               </tr>
             </thead>
             <tbody>
-              {requests.map((request) => (
+              {loading ? (
+                <tr className="border-t">
+                  <td className="p-6 text-sm text-muted-foreground" colSpan={6}>
+                    Carregando...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr className="border-t">
+                  <td className="p-6 text-sm text-muted-foreground" colSpan={6}>
+                    Nenhuma requisição encontrada.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((request) => (
                 <tr key={request.id} className="border-t hover:bg-muted/30 transition-colors">
                   <td className="p-4">
                     <div className="font-semibold">{request.institutionName}</div>
@@ -147,7 +152,8 @@ export default async function RequisicoesPage() {
                     </Button>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>

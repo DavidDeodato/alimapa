@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -11,6 +11,43 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { UserRole } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
+import L from "leaflet"
+
+// Fix do Marker do Leaflet no bundler (senão o ícone some)
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+})
+
+const pulseIcon = L.divIcon({
+  className: "",
+  html: '<div class="pulse-marker"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+})
+
+function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onLocationSelect(e.latlng.lat, e.latlng.lng)
+    },
+  })
+  return null
+}
+
+function MapResizer({ center }: { center: [number, number] }) {
+  const map = useMap()
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize()
+      map.setView(center)
+    }, 50)
+  }, [map, center])
+  return null
+}
 
 type RegisterPayload =
   | {
@@ -59,6 +96,8 @@ export default function CadastroPage() {
   const [role, setRole] = useState<UserRole>("INSTITUICAO")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mapKeyInst, setMapKeyInst] = useState(0)
+  const [mapKeyFarmer, setMapKeyFarmer] = useState(0)
 
   const [displayName, setDisplayName] = useState("")
   const [email, setEmail] = useState("")
@@ -92,6 +131,43 @@ export default function CadastroPage() {
   const [companyName, setCompanyName] = useState("")
 
   const parseNum = (v: string) => (v.trim() ? Number(v) : undefined)
+
+  const instCenter = useMemo<[number, number]>(() => {
+    const la = parseNum(instLat)
+    const ln = parseNum(instLng)
+    return [la ?? -15.78, ln ?? -47.93]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instLat, instLng])
+
+  const farmerCenter = useMemo<[number, number]>(() => {
+    const la = parseNum(farmerLat)
+    const ln = parseNum(farmerLng)
+    return [la ?? -15.78, ln ?? -47.93]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farmerLat, farmerLng])
+
+  useEffect(() => {
+    if (role === "INSTITUICAO") setMapKeyInst((k) => k + 1)
+    if (role === "AGRICULTOR") setMapKeyFarmer((k) => k + 1)
+  }, [role])
+
+  const geocodeTo = async (address: string, opts: { setLat: (v: string) => void; setLng: (v: string) => void; setAddress?: (v: string) => void }) => {
+    const q = address.trim()
+    if (q.length < 3) {
+      toast({ title: "Endereço inválido", description: "Digite um endereço com pelo menos 3 caracteres.", variant: "destructive" })
+      return
+    }
+    const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
+    const json = await res.json().catch(() => null)
+    if (!res.ok || !json?.ok) {
+      toast({ title: "Endereço não encontrado", description: json?.error || "Tente outro endereço.", variant: "destructive" })
+      return
+    }
+    opts.setLat(String(json.data.lat))
+    opts.setLng(String(json.data.lng))
+    if (opts.setAddress) opts.setAddress(String(json.data.displayName || q))
+    toast({ title: "Localização encontrada" })
+  }
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -288,7 +364,17 @@ export default function CadastroPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Endereço</Label>
-                    <Input value={instAddress} onChange={(e) => setInstAddress(e.target.value)} />
+                    <div className="flex gap-2">
+                      <Input value={instAddress} onChange={(e) => setInstAddress(e.target.value)} />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="bg-transparent"
+                        onClick={() => void geocodeTo(instAddress, { setLat: setInstLat, setLng: setInstLng, setAddress: setInstAddress })}
+                      >
+                        Buscar
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -299,6 +385,23 @@ export default function CadastroPage() {
                   <div className="space-y-2">
                     <Label>Lng</Label>
                     <Input value={instLng} onChange={(e) => setInstLng(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Ou clique no mapa para marcar</Label>
+                  <div className="h-[320px] rounded-lg overflow-hidden border">
+                    <MapContainer key={mapKeyInst} center={instCenter} zoom={13} style={{ height: "100%", width: "100%" }}>
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <MapResizer center={instCenter} />
+                      <LocationPicker
+                        onLocationSelect={(lat, lng) => {
+                          setInstLat(String(lat))
+                          setInstLng(String(lng))
+                          toast({ title: "Localização marcada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+                        }}
+                      />
+                      <Marker position={instCenter} icon={pulseIcon} />
+                    </MapContainer>
                   </div>
                 </div>
               </div>
@@ -319,7 +422,19 @@ export default function CadastroPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Endereço</Label>
-                  <Input value={farmerAddress} onChange={(e) => setFarmerAddress(e.target.value)} />
+                  <div className="flex gap-2">
+                    <Input value={farmerAddress} onChange={(e) => setFarmerAddress(e.target.value)} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="bg-transparent"
+                      onClick={() =>
+                        void geocodeTo(farmerAddress, { setLat: setFarmerLat, setLng: setFarmerLng, setAddress: setFarmerAddress })
+                      }
+                    >
+                      Buscar
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -329,6 +444,23 @@ export default function CadastroPage() {
                   <div className="space-y-2">
                     <Label>Lng</Label>
                     <Input value={farmerLng} onChange={(e) => setFarmerLng(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Ou clique no mapa para marcar</Label>
+                  <div className="h-[320px] rounded-lg overflow-hidden border">
+                    <MapContainer key={mapKeyFarmer} center={farmerCenter} zoom={13} style={{ height: "100%", width: "100%" }}>
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <MapResizer center={farmerCenter} />
+                      <LocationPicker
+                        onLocationSelect={(lat, lng) => {
+                          setFarmerLat(String(lat))
+                          setFarmerLng(String(lng))
+                          toast({ title: "Localização marcada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+                        }}
+                      />
+                      <Marker position={farmerCenter} icon={pulseIcon} />
+                    </MapContainer>
                   </div>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">

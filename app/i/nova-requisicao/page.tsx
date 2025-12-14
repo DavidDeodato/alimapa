@@ -1,20 +1,31 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import dynamic from "next/dynamic"
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
+import L from "leaflet"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Trash2, ArrowRight, ArrowLeft, MapPin } from "lucide-react"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
 
-const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false })
-const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false })
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false })
-const useMapEvents = dynamic(() => import("react-leaflet").then((mod) => mod.useMapEvents), { ssr: false })
+// Fix do Marker do Leaflet no bundler (senão o ícone some)
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+})
+
+const pulseIcon = L.divIcon({
+  className: "",
+  html: '<div class="pulse-marker"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+})
 
 function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
   useMapEvents({
@@ -25,10 +36,23 @@ function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, 
   return null
 }
 
+function MapResizer({ center }: { center: [number, number] }) {
+  const map = useMap()
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize()
+      map.setView(center)
+    }, 50)
+  }, [map, center])
+  return null
+}
+
 export default function NovaRequisicaoPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [mapKey, setMapKey] = useState(0)
 
   const [formData, setFormData] = useState({
     program: "PNAE",
@@ -41,6 +65,12 @@ export default function NovaRequisicaoPage() {
     lng: -46.6333,
     address: "",
   })
+
+  const center = useMemo<[number, number]>(() => [formData.lat, formData.lng], [formData.lat, formData.lng])
+
+  useEffect(() => {
+    if (step === 3) setMapKey((k) => k + 1)
+  }, [step])
 
   const addItem = () => {
     setFormData({
@@ -60,34 +90,74 @@ export default function NovaRequisicaoPage() {
     if (!formData.address) return
 
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(formData.address)}&format=json&limit=1`,
-      )
-      const data = await response.json()
-      if (data[0]) {
-        setFormData({
-          ...formData,
-          lat: Number.parseFloat(data[0].lat),
-          lng: Number.parseFloat(data[0].lon),
-        })
-        toast.success("Localização encontrada!")
-      } else {
-        toast.error("Endereço não encontrado")
-      }
-    } catch (error) {
-      toast.error("Erro ao buscar endereço")
+      const response = await fetch(`/api/geocode?q=${encodeURIComponent(formData.address)}`)
+      const json = await response.json()
+      if (!response.ok || !json?.ok) throw new Error(json?.error || "Endereço não encontrado")
+
+      setFormData({
+        ...formData,
+        lat: json.data.lat,
+        lng: json.data.lng,
+      })
+
+      toast({ title: "Localização encontrada", description: json.data.displayName })
+    } catch (error: any) {
+      toast({
+        title: "Erro ao buscar endereço",
+        description: error?.message || "Tente novamente.",
+        variant: "destructive",
+      })
     }
   }
 
   const handleSubmit = async (isDraft: boolean) => {
+    const normalizedItems = formData.items
+      .map((i) => ({
+        productName: i.productName.trim(),
+        quantity: Number(i.quantity),
+        unit: i.unit,
+      }))
+      .filter((i) => i.productName && Number.isFinite(i.quantity) && i.quantity > 0)
+
+    if (!isDraft && normalizedItems.length === 0) {
+      toast({
+        title: "Itens obrigatórios",
+        description: "Adicione pelo menos 1 item (produto e quantidade) antes de enviar.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      toast.success(isDraft ? "Rascunho salvo com sucesso!" : "Requisição enviada com sucesso!")
+      const payload = {
+        program: formData.program,
+        urgency: formData.urgency,
+        needByDate: formData.needByDate,
+        title: formData.title || undefined,
+        justification: formData.justification || undefined,
+        address: formData.address || undefined,
+        lat: formData.lat,
+        lng: formData.lng,
+        items: normalizedItems,
+        isDraft,
+      }
+
+      const res = await fetch("/api/i/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar requisição")
+
+      toast({
+        title: isDraft ? "Rascunho salvo" : "Requisição enviada",
+        description: isDraft ? "Você pode editar e enviar depois." : "O gestor municipal poderá validar e orquestrar.",
+      })
       router.push("/i/requisicoes")
-    } catch (error) {
-      toast.error("Ocorreu um erro. Tente novamente.")
+    } catch (error: any) {
+      toast({ title: "Erro", description: error?.message || "Ocorreu um erro. Tente novamente.", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -275,20 +345,22 @@ export default function NovaRequisicaoPage() {
 
                 <div className="space-y-2">
                   <Label>Ou clique no mapa para marcar sua localização</Label>
-                  <div className="h-96 rounded-lg overflow-hidden border">
+                  <div className="h-[420px] rounded-lg overflow-hidden border">
                     <MapContainer
-                      center={[formData.lat, formData.lng]}
+                      key={mapKey}
+                      center={center}
                       zoom={13}
                       style={{ height: "100%", width: "100%" }}
                     >
                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <MapResizer center={center} />
                       <LocationPicker
                         onLocationSelect={(lat, lng) => {
                           setFormData({ ...formData, lat, lng })
-                          toast.success("Localização atualizada!")
+                          toast({ title: "Localização atualizada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
                         }}
                       />
-                      <Marker position={[formData.lat, formData.lng]} />
+                      <Marker position={center} icon={pulseIcon} />
                     </MapContainer>
                   </div>
                   <p className="text-sm text-muted-foreground">

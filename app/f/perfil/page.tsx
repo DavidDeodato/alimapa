@@ -10,6 +10,43 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "next-auth/react"
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
+import L from "leaflet"
+
+// Fix do Marker do Leaflet no bundler (senão o ícone some)
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+})
+
+const pulseIcon = L.divIcon({
+  className: "",
+  html: '<div class="pulse-marker"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+})
+
+function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onLocationSelect(e.latlng.lat, e.latlng.lng)
+    },
+  })
+  return null
+}
+
+function MapResizer({ center }: { center: [number, number] }) {
+  const map = useMap()
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize()
+      map.setView(center)
+    }, 50)
+  }, [map, center])
+  return null
+}
 
 export default function PerfilPage() {
   const { toast } = useToast()
@@ -34,6 +71,11 @@ export default function PerfilPage() {
 
   const avatarUrl = me?.user?.avatarUrl || null
   const avatarInitial = useMemo(() => (formData.displayName || "U")[0], [formData.displayName])
+  const center = useMemo<[number, number]>(() => {
+    const la = formData.lat.trim() ? Number(formData.lat) : NaN
+    const ln = formData.lng.trim() ? Number(formData.lng) : NaN
+    return [Number.isFinite(la) ? la : -15.78, Number.isFinite(ln) ? ln : -47.93]
+  }, [formData.lat, formData.lng])
 
   const load = async () => {
     setLoading(true)
@@ -263,11 +305,40 @@ export default function PerfilPage() {
 
           <div className="space-y-2">
             <Label htmlFor="address">Endereço</Label>
-            <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            />
+            <div className="flex gap-2">
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-transparent"
+                onClick={async () => {
+                  const q = formData.address.trim()
+                  if (q.length < 3) {
+                    toast({ title: "Endereço inválido", description: "Digite um endereço com pelo menos 3 caracteres.", variant: "destructive" })
+                    return
+                  }
+                  const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`)
+                  const json = await res.json().catch(() => null)
+                  if (!res.ok || !json?.ok) {
+                    toast({ title: "Endereço não encontrado", description: json?.error || "Tente outro endereço.", variant: "destructive" })
+                    return
+                  }
+                  setFormData({
+                    ...formData,
+                    address: String(json.data.displayName || q),
+                    lat: String(json.data.lat),
+                    lng: String(json.data.lng),
+                  })
+                  toast({ title: "Localização encontrada" })
+                }}
+              >
+                Buscar
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -278,6 +349,23 @@ export default function PerfilPage() {
             <div className="space-y-2">
               <Label htmlFor="lng">Lng</Label>
               <Input id="lng" value={formData.lng} onChange={(e) => setFormData({ ...formData, lng: e.target.value })} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Ou clique no mapa para marcar</Label>
+            <div className="h-[320px] rounded-lg overflow-hidden border">
+              <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <MapResizer center={center} />
+                <LocationPicker
+                  onLocationSelect={(lat, lng) => {
+                    setFormData({ ...formData, lat: String(lat), lng: String(lng) })
+                    toast({ title: "Localização marcada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+                  }}
+                />
+                <Marker position={center} icon={pulseIcon} />
+              </MapContainer>
             </div>
           </div>
 
