@@ -17,6 +17,8 @@ interface AuthLayoutProps {
   children: React.ReactNode
   role: UserRole
   sidebar: React.ReactNode
+  userName?: string | null
+  avatarUrl?: string | null
   isCollapsed?: boolean
   onCollapsedChange?: (collapsed: boolean) => void
 }
@@ -25,6 +27,8 @@ export function AuthLayout({
   children,
   role,
   sidebar,
+  userName,
+  avatarUrl,
   isCollapsed: controlledCollapsed,
   onCollapsedChange,
 }: AuthLayoutProps) {
@@ -126,17 +130,39 @@ export function AuthLayout({
                 </Badge>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 bg-transparent"
-              onClick={async () => {
-                toast({ title: "Saindo...", description: "Encerrando sua sessão." })
-                await signOut({ callbackUrl: "/auth/login" })
-              }}
-            >
-              Sair
-            </Button>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/${
+                  role === "GESTOR" ? "m" : role === "INSTITUICAO" ? "i" : role === "AGRICULTOR" ? "f" : "c"
+                }/perfil`}
+                className="flex items-center gap-2"
+              >
+                <div className="h-9 w-9 rounded-full overflow-hidden bg-muted flex items-center justify-center border">
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl} alt="Foto do perfil" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-sm font-semibold text-muted-foreground">{(userName || "U")[0]}</span>
+                  )}
+                </div>
+                <div className="hidden sm:block">
+                  <div className="text-sm font-medium leading-tight">{userName || "Meu perfil"}</div>
+                  <div className="text-xs text-muted-foreground leading-tight">Ver perfil</div>
+                </div>
+              </Link>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent"
+                onClick={async () => {
+                  toast({ title: "Saindo...", description: "Encerrando sua sessão." })
+                  await signOut({ callbackUrl: "/auth/login" })
+                }}
+              >
+                Sair
+              </Button>
+            </div>
           </div>
         </header>
 

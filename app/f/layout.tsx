@@ -24,6 +24,8 @@ export default async function AgricultorLayout({ children }: { children: React.R
   return (
     <AuthLayout
       role={(session.user as any).role}
+      userName={session.user.name}
+      avatarUrl={(session.user as any).avatarUrl}
       sidebar={
         <div className="space-y-1">
           {navItems.map((item) => (
