@@ -115,18 +115,40 @@ export default function NovaRequisicaoPage() {
         isDraft: true,
       }
 
-      const res = await fetch("/api/i/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-      const json = await res.json()
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar requisição")
+      if (requestId) {
+        const res = await fetch(`/api/i/requests/${requestId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            program: payload.program,
+            urgency: payload.urgency,
+            needByDate: payload.needByDate,
+            title: payload.title ?? null,
+            justification: payload.justification ?? null,
+            address: payload.address ?? null,
+            lat: payload.lat ?? null,
+            lng: payload.lng ?? null,
+            items: payload.items,
+          }),
+        })
+        const json = await res.json().catch(() => null)
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao atualizar rascunho")
+        toast({ title: "Rascunho atualizado" })
+        return requestId
+      } else {
+        const res = await fetch("/api/i/requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+        const json = await res.json()
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar requisição")
 
-      const createdId = json.data.request.id as string
-      setRequestId(createdId)
-      toast({ title: "Rascunho criado", description: "Agora você pode anexar provas." })
-      return createdId
+        const createdId = json.data.request.id as string
+        setRequestId(createdId)
+        toast({ title: "Rascunho criado", description: "Agora você pode anexar provas." })
+        return createdId
+      }
     } catch (error: any) {
       toast({ title: "Erro", description: error?.message || "Ocorreu um erro. Tente novamente.", variant: "destructive" })
       return null

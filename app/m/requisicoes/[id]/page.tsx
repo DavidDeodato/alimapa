@@ -40,6 +40,14 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const [offers, setOffers] = useState<Offer[]>([])
   const [agentConfigs, setAgentConfigs] = useState<Array<{ id: string; farmerName: string; isActive: boolean }>>([])
   const [selectedAgentConfigId, setSelectedAgentConfigId] = useState<string>("")
+  const [validatorAgents, setValidatorAgents] = useState<Array<{ id: string; farmerName: string; isActive: boolean }>>([])
+  const [selectedValidatorAgentId, setSelectedValidatorAgentId] = useState<string>("")
+  const [proofAnalyzing, setProofAnalyzing] = useState(false)
+  const [proofProgress, setProofProgress] = useState(0)
+  const [proofStep, setProofStep] = useState(0)
+  const [proofChecklist, setProofChecklist] = useState<Array<{ item: string; status: "pending" | "checking" | "pass" | "fail" | "missing"; reason?: string }>>([])
+  const [proofAnalysis, setProofAnalysis] = useState<any>(null)
+  const proofIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [isAgentRunning, setIsAgentRunning] = useState(false)
   const [agentStep, setAgentStep] = useState(0)
   const [matchedFarmers, setMatchedFarmers] = useState<any[]>([])
@@ -86,6 +94,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           const usable = list.filter((a: any) => a.isActive && a.type !== "VALIDATOR")
           setAgentConfigs(usable)
           if (!selectedAgentConfigId && usable.length) setSelectedAgentConfigId(usable[0].id)
+
+          const validators = list.filter((a: any) => a.isActive && a.type === "VALIDATOR")
+          setValidatorAgents(validators)
+          if (!selectedValidatorAgentId && validators.length) setSelectedValidatorAgentId(validators[0].id)
         }
       } catch {
         // silencioso
@@ -225,6 +237,94 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     { icon: MessageSquare, label: "Enviando propostas e mensagens...", color: "text-primary" },
   ]
 
+  const proofSteps = [
+    { icon: Search, label: "Coletando anexos", color: "text-blue-600" },
+    { icon: Search, label: "Extraindo termos dos documentos", color: "text-purple-600" },
+    { icon: CheckCircle, label: "Preenchendo checklist", color: "text-orange-600" },
+    { icon: Sparkles, label: "Gerando veredito", color: "text-green-700" },
+  ]
+
+  const analyzeProofs = async () => {
+    if (!selectedValidatorAgentId) {
+      toast({ title: "Selecione um agente validador", variant: "destructive" })
+      return
+    }
+
+    if (proofIntervalRef.current) {
+      clearInterval(proofIntervalRef.current)
+      proofIntervalRef.current = null
+    }
+
+    setProofAnalyzing(true)
+    setProofAnalysis(null)
+    setProofProgress(0)
+    setProofStep(0)
+
+    // checklist base (pra animação) — depois substituímos pelos resultados do backend
+    const baseChecklist =
+      (validatorAgents.find((a) => a.id === selectedValidatorAgentId) ? [
+        "Foto externa do local",
+        "Foto interna do local",
+        "Documento de identificação",
+      ] : ["Foto externa do local", "Foto interna do local", "Documento de identificação"])
+
+    setProofChecklist(baseChecklist.map((item) => ({ item, status: "pending" as const })))
+
+    let tick = 0
+    proofIntervalRef.current = setInterval(() => {
+      tick += 1
+      setProofProgress((p) => Math.min(99, p + 6))
+      setProofStep((s) => Math.min(3, Math.floor(tick / 4)))
+      // mexe a lupa/checklist
+      setProofChecklist((prev) => {
+        if (!prev.length) return prev
+        const idx = Math.min(prev.length - 1, Math.floor(tick / 3))
+        return prev.map((c, i) => {
+          if (i < idx) return c.status === "checking" ? { ...c, status: "pending" } : c
+          if (i === idx) return { ...c, status: "checking" }
+          return c
+        })
+      })
+    }, 350)
+
+    try {
+      const res = await fetch(`/api/requests/${id}/proofs/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentConfigId: selectedValidatorAgentId }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao analisar provas")
+
+      const analysis = json.data.analysis
+      setProofAnalysis(analysis)
+
+      // aplicar checklist retornado
+      if (Array.isArray(analysis?.checklist) && analysis.checklist.length) {
+        setProofChecklist(
+          analysis.checklist.map((c: any) => ({
+            item: String(c.item || ""),
+            status:
+              c.status === "PASS" ? "pass" : c.status === "FAIL" ? "fail" : c.status === "MISSING" ? "missing" : "pending",
+            reason: c.reason ? String(c.reason) : undefined,
+          })),
+        )
+      }
+
+      setProofProgress(100)
+      setProofStep(3)
+      toast({ title: "Análise concluída" })
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao analisar provas", variant: "destructive" })
+    } finally {
+      if (proofIntervalRef.current) {
+        clearInterval(proofIntervalRef.current)
+        proofIntervalRef.current = null
+      }
+      setProofAnalyzing(false)
+    }
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -320,6 +420,118 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             ) : (
               <p className="text-sm text-muted-foreground">Nenhuma prova anexada.</p>
             )}
+          </Card>
+
+          {/* Análise de provas com IA (Validador) */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Analisar Provas com IA</h2>
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm font-medium mb-2">Agente validador</div>
+                <Select
+                  value={selectedValidatorAgentId || "none"}
+                  onValueChange={(v) => setSelectedValidatorAgentId(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecionar agente validador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {validatorAgents.length === 0 && <SelectItem value="none">Nenhum validador ativo</SelectItem>}
+                    {validatorAgents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.farmerName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button onClick={analyzeProofs} disabled={proofAnalyzing || !selectedValidatorAgentId}>
+                {proofAnalyzing ? "Analisando..." : "Analisar provas (IA)"}
+              </Button>
+
+              {proofAnalyzing ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">Progresso</span>
+                      <span className="text-muted-foreground">{proofProgress}%</span>
+                    </div>
+                    <Progress value={proofProgress} className="h-2" />
+                  </div>
+
+                  <div className="space-y-2">
+                    {proofSteps.slice(0, proofStep + 1).map((s, idx) => {
+                      const Icon = s.icon
+                      const active = idx === proofStep
+                      return (
+                        <div
+                          key={idx}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg transition-all duration-300",
+                            active ? "bg-muted/50" : "opacity-70",
+                          )}
+                        >
+                          <div className={cn("p-2 rounded-full", active ? "bg-primary text-primary-foreground" : "bg-muted")}>
+                            {active ? <Loader2 className="h-4 w-4 animate-spin" /> : <Icon className="h-4 w-4" />}
+                          </div>
+                          <div className={cn("text-sm font-medium", s.color)}>{s.label}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="rounded-lg border p-3 bg-muted/30">
+                    <div className="text-sm font-medium mb-2">Checklist interno</div>
+                    <div className="space-y-2">
+                      {proofChecklist.map((c) => (
+                        <div key={c.item} className="flex items-center justify-between gap-3">
+                          <div className="text-sm">{c.item}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {c.status === "checking" ? "Analisando..." : c.status === "pending" ? "Pendente" : c.status}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {proofAnalysis ? (
+                <div className="rounded-lg border p-4 bg-muted/30 space-y-2">
+                  <div className="text-sm font-medium">
+                    Veredito: <span className="font-semibold">{proofAnalysis.verdict ?? "-"}</span> • Confiança:{" "}
+                    <span className="font-semibold">{Math.round((proofAnalysis.confidence ?? 0) * 100)}%</span>
+                  </div>
+                  {Array.isArray(proofAnalysis.missing) && proofAnalysis.missing.length ? (
+                    <div className="text-sm">
+                      <div className="font-medium mb-1">Faltando</div>
+                      <ul className="list-disc pl-5 text-muted-foreground">
+                        {proofAnalysis.missing.map((x: any, idx: number) => (
+                          <li key={idx}>{String(x)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {Array.isArray(proofAnalysis.issues) && proofAnalysis.issues.length ? (
+                    <div className="text-sm">
+                      <div className="font-medium mb-1">Inconsistências</div>
+                      <ul className="list-disc pl-5 text-muted-foreground">
+                        {proofAnalysis.issues.map((x: any, idx: number) => (
+                          <li key={idx}>{String(x)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {proofAnalysis.notes ? (
+                    <div className="text-sm">
+                      <div className="font-medium mb-1">Notas</div>
+                      <div className="text-muted-foreground whitespace-pre-wrap">{String(proofAnalysis.notes)}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           </Card>
 
           {/* Ações condicionais */}

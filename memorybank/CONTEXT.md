@@ -58,8 +58,6 @@ O seed cria usuários demo com senha padrão:
 
 - **Deploy Vercel — pnpm lockfile**: a Vercel falha com `ERR_PNPM_OUTDATED_LOCKFILE` quando `pnpm-lock.yaml` não está sincronizado com `package.json` (ex.: deps adicionadas e lockfile não atualizado). Mitigação rápida no repo (sem mexer na Vercel): adicionar `.npmrc` com `frozen-lockfile=false` (e `prefer-frozen-lockfile=false`) para permitir `pnpm install` em CI mesmo com lockfile desatualizado.
 
-- **Build Vercel — NextAuth + Prisma**: o `next build` pode falhar em “Failed to collect page data for `/api/auth/[...nextauth]`” quando `@/lib/auth-options` importa `@prisma/client` mas o Prisma Client **não foi gerado** no ambiente de build. Correção no repo: adicionar `postinstall` e `prebuild` com `prisma generate` no `package.json` para garantir que o client exista antes do `next build`.
-
 - **Next 16 (App Router) — params Promise**: rotas dinâmicas em `app/api/**/[id]/route.ts` podem receber `params` como **Promise**. Se o handler acessa `params.id` direto, o `id` vira `undefined` e o Prisma quebra (ex.: `GET /api/conversations/:id/messages`). Padronizar para:
   - `export async function GET(req, { params }: { params: Promise<{ id: string }> }) { const { id } = await params }`
   - Validar `id` e retornar 400 ao invés de 500.
