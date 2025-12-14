@@ -132,21 +132,22 @@ export default function EmpresaPerfilPage() {
           <div className="space-y-2">
             <div className="text-sm font-medium">Foto do perfil</div>
             <div className="flex gap-2">
-              <label className="inline-flex items-center">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) void onPickAvatar(f)
-                    e.currentTarget.value = ""
-                  }}
-                />
-                <Button type="button" variant="outline" className="bg-transparent">
+              <input
+                id="avatar-upload-c"
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void onPickAvatar(f)
+                  e.currentTarget.value = ""
+                }}
+              />
+              <Button asChild type="button" variant="outline" className="bg-transparent">
+                <label htmlFor="avatar-upload-c" className="cursor-pointer">
                   Trocar foto
-                </Button>
-              </label>
+                </label>
+              </Button>
               <Button
                 type="button"
                 variant="outline"
