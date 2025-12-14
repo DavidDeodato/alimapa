@@ -65,13 +65,6 @@ export function AuthLayout({
               <Image src="/alimap.png" alt="Alimapa" width={140} height={36} className="h-9 w-auto" />
             </Link>
           )}
-          {isCollapsed && (
-            <Link href="/" className="flex items-center justify-center">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg">
-                A
-              </div>
-            </Link>
-          )}
           <Button
             variant="ghost"
             size="icon"
@@ -88,7 +81,16 @@ export function AuthLayout({
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden p-4">
-          <div className={cn("space-y-2", isCollapsed && "space-y-3")}>{sidebar}</div>
+          <div
+            className={cn(
+              "space-y-2",
+              isCollapsed &&
+                // quando colapsado: só ícones, sem letras vazando
+                "space-y-3 [&_span]:!hidden [&_button]:!justify-center [&_button]:!px-2 [&_button]:!gap-0 [&_button]:!w-full [&_button]:!min-w-0 [&_*]:!truncate [&_badge]:!hidden",
+            )}
+          >
+            {sidebar}
+          </div>
         </nav>
       </aside>
 
