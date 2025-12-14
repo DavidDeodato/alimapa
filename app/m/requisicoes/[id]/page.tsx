@@ -1,5 +1,6 @@
 "use client"
 
+import { use } from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -28,8 +29,8 @@ import {
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
-export default function RequestDetailPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [isAgentRunning, setIsAgentRunning] = useState(false)
   const [agentStep, setAgentStep] = useState(0)
   const [matchedFarmers, setMatchedFarmers] = useState<any[]>([])

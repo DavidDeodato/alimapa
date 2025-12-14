@@ -1,5 +1,6 @@
 "use client"
 
+import { use } from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -8,8 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Send, ArrowLeft, Check, X } from "lucide-react"
 import Link from "next/link"
 
-export default function ChatPage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [message, setMessage] = useState("")
   const [messages, setMessages] = useState([
     {

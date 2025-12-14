@@ -43,10 +43,11 @@ export default function PainelPage() {
       const response = await fetch("/api/m/dashboard")
       if (!response.ok) throw new Error()
       const data = await response.json()
+      if (!data?.ok) throw new Error()
 
-      setDashboard(data.dashboard)
-      setRequests(data.requests || [])
-      setFarmers(data.farmers || [])
+      setDashboard(data.data.dashboard)
+      setRequests(data.data.requests || [])
+      setFarmers(data.data.farmers || [])
     } catch (error) {
       toast({
         variant: "destructive",

@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 const { PrismaClient } = require("@prisma/client")
+const bcrypt = require("bcryptjs")
 
 const prisma = new PrismaClient()
 
@@ -13,6 +14,9 @@ async function main() {
   console.log("🌱 Seeding Alimapa...")
 
   // wipe (dev/demo)
+  // ordem importa por causa de FKs
+  await prisma.auditLog.deleteMany()
+  await prisma.impactCredit.deleteMany()
   await prisma.message.deleteMany()
   await prisma.conversation.deleteMany()
   await prisma.offerItem.deleteMany()
@@ -21,7 +25,6 @@ async function main() {
   await prisma.agentConfig.deleteMany()
   await prisma.evidence.deleteMany()
   await prisma.deliveryConfirmation.deleteMany()
-  await prisma.impactCredit.deleteMany()
   await prisma.requestItem.deleteMany()
   await prisma.request.deleteMany()
   await prisma.company.deleteMany()
@@ -29,7 +32,6 @@ async function main() {
   await prisma.farmer.deleteMany()
   await prisma.user.deleteMany()
   await prisma.municipality.deleteMany()
-  await prisma.auditLog.deleteMany()
 
   const municipality = await prisma.municipality.create({
     data: {
@@ -40,11 +42,15 @@ async function main() {
     },
   })
 
-  // Demo users (IDs reais no DB; /api/demo/session vai selecionar um)
+  const demoPassword = await bcrypt.hash("demo1234", 10)
+
+  // Usuários de demonstração (agora com email/senha para login real via NextAuth)
   const gestorUser = await prisma.user.create({
     data: {
       role: "GESTOR",
       displayName: "Gestor Municipal (Demo)",
+      email: "gestor@demo.alimapa",
+      passwordHash: demoPassword,
       municipalityId: municipality.id,
     },
   })
@@ -52,6 +58,8 @@ async function main() {
     data: {
       role: "INSTITUICAO",
       displayName: "Instituição (Demo)",
+      email: "instituicao@demo.alimapa",
+      passwordHash: demoPassword,
       municipalityId: municipality.id,
     },
   })
@@ -59,6 +67,8 @@ async function main() {
     data: {
       role: "AGRICULTOR",
       displayName: "Agricultor (Demo)",
+      email: "agricultor@demo.alimapa",
+      passwordHash: demoPassword,
       municipalityId: municipality.id,
     },
   })
@@ -66,6 +76,8 @@ async function main() {
     data: {
       role: "EMPRESA",
       displayName: "Empresa (Demo)",
+      email: "empresa@demo.alimapa",
+      passwordHash: demoPassword,
       municipalityId: municipality.id,
     },
   })

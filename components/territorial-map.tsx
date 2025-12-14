@@ -28,6 +28,7 @@ export function TerritorialMap({
   centerLng = -47.93,
 }: TerritorialMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<any>(null)
   const [map, setMap] = useState<any>(null)
   const [showRequests, setShowRequests] = useState(true)
   const [showFarmers, setShowFarmers] = useState(true)
@@ -47,23 +48,37 @@ export function TerritorialMap({
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       })
 
-      if (!map) {
-        const newMap = L.map(mapRef.current!).setView([centerLat, centerLng], 12)
+      // React 18/Next dev pode rodar effects duas vezes; Leaflet não permite inicializar 2x no mesmo container.
+      // Guardamos a instância em ref e checamos antes de criar.
+      if (!mapInstanceRef.current) {
+        const newMap = L.map(mapRef.current!, {
+          zoomControl: true,
+        }).setView([centerLat, centerLng], 12)
 
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "&copy; OpenStreetMap contributors",
         }).addTo(newMap)
 
+        mapInstanceRef.current = newMap
         setMap(newMap)
       }
     })
 
     return () => {
-      if (map) {
-        map.remove()
+      // Cleanup robusto: remove a instância real, mesmo se o state `map` estiver stale.
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Se o centro mudar (ex: carregou municipality center), ajusta sem recriar mapa
+  useEffect(() => {
+    if (!mapInstanceRef.current) return
+    mapInstanceRef.current.setView([centerLat, centerLng], mapInstanceRef.current.getZoom?.() ?? 12)
+  }, [centerLat, centerLng])
 
   useEffect(() => {
     if (!map || typeof window === "undefined") return

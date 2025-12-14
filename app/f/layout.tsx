@@ -1,26 +1,17 @@
-"use client"
-
 import type React from "react"
+import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import { AuthLayout } from "@/components/auth-layout"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FileText, User, FolderOpen, Store, MessageCircle } from "lucide-react"
-import { useState, useEffect } from "react"
 
-export default function AgricultorLayout({ children }: { children: React.ReactNode }) {
-  const [unreadCount, setUnreadCount] = useState(1)
-
-  useEffect(() => {
-    // Simulate checking for unread messages
-    const checkUnread = () => {
-      // In a real app, this would fetch from an API
-      setUnreadCount(1)
-    }
-    checkUnread()
-    const interval = setInterval(checkUnread, 30000)
-    return () => clearInterval(interval)
-  }, [])
+export default async function AgricultorLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "AGRICULTOR") redirect("/auth/login")
+  const unreadCount = 0
 
   const navItems = [
     { href: "/f/propostas", icon: FileText, label: "Propostas", badge: 0 },
@@ -32,7 +23,7 @@ export default function AgricultorLayout({ children }: { children: React.ReactNo
 
   return (
     <AuthLayout
-      role="AGRICULTOR"
+      role={(session.user as any).role}
       sidebar={
         <div className="space-y-1">
           {navItems.map((item) => (

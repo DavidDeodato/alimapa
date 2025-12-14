@@ -1,6 +1,7 @@
 import type React from "react"
 import { redirect } from "next/navigation"
-import { getDemoSession } from "@/lib/demo-session"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import { AuthLayout } from "@/components/auth-layout"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -11,11 +12,8 @@ export default async function InstituicaoLayout({
 }: {
   children: React.ReactNode
 }) {
-  const session = await getDemoSession()
-
-  if (!session || session.role !== "INSTITUICAO") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "INSTITUICAO") redirect("/auth/login")
 
   const navItems = [
     { href: "/i/requisicoes", icon: FileText, label: "Minhas Requisições" },
@@ -24,7 +22,7 @@ export default async function InstituicaoLayout({
 
   return (
     <AuthLayout
-      role={session.role}
+      role={(session.user as any).role}
       sidebar={
         <div className="space-y-1">
           {navItems.map((item) => (

@@ -1,17 +1,21 @@
-import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import type { UserRole } from "@/lib/types"
+import { ok, err } from "@/lib/api-response"
+import { prisma } from "@/lib/db"
 
 export async function POST(request: Request) {
   try {
     const { role } = (await request.json()) as { role: UserRole }
 
     if (!role || !["GESTOR", "INSTITUICAO", "AGRICULTOR", "EMPRESA"].includes(role)) {
-      return NextResponse.json({ ok: false, error: "Role inválido" }, { status: 400 })
+      return err("Role inválido", 400)
     }
 
-    // Generate demo user ID
-    const userId = `demo-${role.toLowerCase()}-${Date.now()}`
+    const user = await prisma.user.findFirst({
+      where: { role },
+      orderBy: { createdAt: "asc" },
+    })
+    if (!user) return err("Usuário de demonstração não encontrado no banco. Rode o seed.", 500)
 
     const cookieStore = await cookies()
     cookieStore.set("alimapa_role", role, {
@@ -20,15 +24,15 @@ export async function POST(request: Request) {
       sameSite: "lax",
       maxAge: 60 * 60 * 24, // 24 hours
     })
-    cookieStore.set("alimapa_user_id", userId, {
+    cookieStore.set("alimapa_user_id", user.id, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24,
     })
 
-    return NextResponse.json({ ok: true, role, userId })
+    return ok({ role, userId: user.id })
   } catch (error) {
-    return NextResponse.json({ ok: false, error: "Erro ao criar sessão" }, { status: 500 })
+    return err("Erro ao criar sessão", 500)
   }
 }

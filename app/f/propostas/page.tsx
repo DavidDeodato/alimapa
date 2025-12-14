@@ -1,5 +1,6 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -9,10 +10,8 @@ import type { Offer } from "@/lib/types"
 import { EmptyState } from "@/components/empty-state"
 
 export default async function PropostasPage() {
-  const session = await getDemoSession()
-  if (!session || session.role !== "AGRICULTOR") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "AGRICULTOR") redirect("/auth/login")
 
   const offers: Offer[] = [
     {

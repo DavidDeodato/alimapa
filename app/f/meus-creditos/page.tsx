@@ -24,7 +24,7 @@ export default function MeusCreditosPage() {
       const response = await fetch("/api/f/credits")
       if (response.ok) {
         const data = await response.json()
-        setCredits(data.credits || [])
+        if (data?.ok) setCredits(data.data.credits || [])
       }
     } catch (error) {
       toast({
