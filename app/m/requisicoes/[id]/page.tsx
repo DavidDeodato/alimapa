@@ -326,11 +326,11 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-8 space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
               Requisição #{id}
             </h1>
             {request ? (
@@ -343,7 +343,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </div>
           <p className="text-muted-foreground">{request?.institutionName ?? (loading ? "Carregando..." : "")}</p>
         </div>
-        <Button variant="outline" asChild>
+        <Button variant="outline" asChild className="w-full sm:w-auto">
           <Link href="/m/requisicoes">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Voltar
@@ -351,12 +351,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="lg:col-span-2 space-y-6">
           {/* Informações básicas */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Informações Básicas</h2>
-            <div className="grid grid-cols-2 gap-4">
+          <Card className="p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg md:text-xl font-semibold mb-4">Informações Básicas</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-start gap-3">
                 <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
                 <div>
@@ -382,8 +382,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           {/* Itens solicitados */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Card className="p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg md:text-xl font-semibold mb-4 flex items-center gap-2">
               <Package className="h-5 w-5" />
               Itens Solicitados
             </h2>
@@ -400,8 +400,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           {/* Provas e documentos */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Provas e Documentos</h2>
+          <Card className="p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg md:text-xl font-semibold mb-4">Provas e Documentos</h2>
             {((request as any)?.evidence && Array.isArray((request as any).evidence) && (request as any).evidence.length) ? (
               <div className="space-y-3">
                 {(request as any).evidence.map((e: any) => (
@@ -423,8 +423,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           {/* Análise de provas com IA (Validador) */}
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Analisar Provas com IA</h2>
+          <Card className="p-4 sm:p-5 md:p-6">
+            <h2 className="text-lg md:text-xl font-semibold mb-4">Analisar Provas com IA</h2>
             <div className="space-y-4">
               <div>
                 <div className="text-sm font-medium mb-2">Agente validador</div>
@@ -446,7 +446,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 </Select>
               </div>
 
-              <Button onClick={analyzeProofs} disabled={proofAnalyzing || !selectedValidatorAgentId}>
+              <Button onClick={analyzeProofs} disabled={proofAnalyzing || !selectedValidatorAgentId} className="w-full sm:w-auto">
                 {proofAnalyzing ? "Analisando..." : "Analisar provas (IA)"}
               </Button>
 
@@ -485,11 +485,30 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     <div className="text-sm font-medium mb-2">Checklist interno</div>
                     <div className="space-y-2">
                       {proofChecklist.map((c) => (
-                        <div key={c.item} className="flex items-center justify-between gap-3">
-                          <div className="text-sm">{c.item}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {c.status === "checking" ? "Analisando..." : c.status === "pending" ? "Pendente" : c.status}
-                          </div>
+                        <div key={c.item} className="flex items-start justify-between gap-3">
+                          <div className="text-sm leading-snug">{c.item}</div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "shrink-0",
+                              c.status === "checking" && "border-primary text-primary animate-pulse",
+                              c.status === "pass" && "border-green-600 text-green-700",
+                              c.status === "fail" && "border-red-600 text-red-700",
+                              c.status === "missing" && "border-amber-600 text-amber-700",
+                            )}
+                          >
+                            {c.status === "checking"
+                              ? "Analisando"
+                              : c.status === "pending"
+                                ? "Pendente"
+                                : c.status === "pass"
+                                  ? "PASS"
+                                  : c.status === "fail"
+                                    ? "FAIL"
+                                    : c.status === "missing"
+                                      ? "MISSING"
+                                      : c.status}
+                          </Badge>
                         </div>
                       ))}
                     </div>
@@ -536,12 +555,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
           {/* Ações condicionais */}
           {canValidate && (
-            <Card className="p-6 bg-blue-50 border-blue-200">
-              <h2 className="text-xl font-semibold mb-4">Ações Necessárias</h2>
+            <Card className="p-4 sm:p-5 md:p-6 bg-blue-50 border-blue-200">
+              <h2 className="text-lg md:text-xl font-semibold mb-4">Ações Necessárias</h2>
               <p className="text-sm text-muted-foreground mb-4">
                 Esta requisição foi enviada pela instituição e aguarda validação.
               </p>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   className="flex-1"
                   onClick={async () => {
@@ -570,13 +589,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           {/* Propostas */}
           {(request?.status === "VALIDATED" || request?.status === "PROPOSALS_SENT" || request?.status === "FULFILLING") && (
             <Card className="card-elevated overflow-hidden">
-              <div className="p-6 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5">
+              <div className="p-4 sm:p-5 md:p-6 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="p-3 rounded-xl bg-gradient-to-br from-primary to-secondary">
                     <Sparkles className="h-6 w-6 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-semibold">Automação com IA</h2>
+                    <h2 className="text-lg md:text-xl font-semibold">Automação com IA</h2>
                     <p className="text-sm text-muted-foreground">
                       Encontre os melhores fornecedores e envie propostas automaticamente
                     </p>
@@ -636,9 +655,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                           <div
                             key={idx}
                             className={cn(
-                              "flex items-center gap-4 p-4 rounded-xl transition-all duration-500",
+                              "flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl transition-all duration-500",
                               isActive
-                                ? "bg-gradient-to-r from-primary/10 to-secondary/10 scale-105 shadow-lg"
+                                ? "bg-gradient-to-r from-primary/10 to-secondary/10 sm:scale-105 shadow-lg"
                                 : "bg-muted/50 opacity-60",
                             )}
                           >
@@ -685,9 +704,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                             const status = sendStatuses[farmer.id]
                             return (
                               <Card key={farmer.id} className="p-4 border-2 hover:border-primary/50 transition-colors">
-                                <div className="flex items-start justify-between gap-4">
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
                                   <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-2">
+                                    <div className="flex flex-wrap items-center gap-2 mb-2">
                                       <User className="h-5 w-5 text-primary" />
                                       <h4 className="font-semibold">{farmer.name}</h4>
                                       <Badge variant="outline" className="text-xs">
@@ -695,16 +714,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                                       </Badge>
                                     </div>
                                     <p className="text-sm text-muted-foreground mb-3">{farmer.reason}</p>
-                                    <div className="flex gap-4 text-xs text-muted-foreground">
+                                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-1 sm:gap-4 text-xs text-muted-foreground">
                                       <span>📍 {farmer.distance ?? "-"}km</span>
-                                      <span>📦 {farmer.products.join(", ")}</span>
+                                      <span className="break-words">📦 {farmer.products.join(", ")}</span>
                                     </div>
                                   </div>
 
                                   {status ? (
                                     <Badge
                                       variant={status === "sent" ? "default" : "secondary"}
-                                      className={cn(status === "sent" && "bg-green-600")}
+                                      className={cn("w-fit", status === "sent" && "bg-green-600")}
                                     >
                                       {status === "pending" ? "Aguardando" : status === "sending" ? "Enviando..." : "Enviado"}
                                     </Badge>
@@ -741,21 +760,49 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
         {/* Timeline */}
         <div className="space-y-6">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Linha do Tempo
-            </h2>
-            <div className="space-y-4">{/* Timeline events */}</div>
-          </Card>
+          {/* Mobile: colapsável */}
+          <div className="lg:hidden">
+            <details className="rounded-xl border bg-card text-card-foreground shadow-sm">
+              <summary className="cursor-pointer select-none px-4 py-3 font-semibold">
+                Mais detalhes (linha do tempo e documentos)
+              </summary>
+              <div className="px-4 pb-4 pt-2 space-y-4">
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 font-semibold mb-2">
+                    <Clock className="h-4 w-4" />
+                    Linha do Tempo
+                  </div>
+                  <div className="text-sm text-muted-foreground">Em breve</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="flex items-center gap-2 font-semibold mb-2">
+                    <FileText className="h-4 w-4" />
+                    Documentos
+                  </div>
+                  <p className="text-sm text-muted-foreground">Nenhum documento anexado</p>
+                </div>
+              </div>
+            </details>
+          </div>
 
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Documentos
-            </h2>
-            <p className="text-sm text-muted-foreground">Nenhum documento anexado</p>
-          </Card>
+          {/* Desktop: sempre visível */}
+          <div className="hidden lg:block space-y-6">
+            <Card className="p-4 sm:p-5 md:p-6">
+              <h2 className="text-lg md:text-xl font-semibold mb-4 flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Linha do Tempo
+              </h2>
+              <div className="space-y-4">{/* Timeline events */}</div>
+            </Card>
+
+            <Card className="p-4 sm:p-5 md:p-6">
+              <h2 className="text-lg md:text-xl font-semibold mb-4 flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Documentos
+              </h2>
+              <p className="text-sm text-muted-foreground">Nenhum documento anexado</p>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
