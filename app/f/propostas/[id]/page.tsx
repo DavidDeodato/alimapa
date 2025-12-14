@@ -1,5 +1,6 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -7,10 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Check, X, Package, DollarSign, MapPin, Calendar } from "lucide-react"
 
 export default async function PropostaDetailPage({ params }: { params: { id: string } }) {
-  const session = await getDemoSession()
-  if (!session || session.role !== "AGRICULTOR") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "AGRICULTOR") redirect("/auth/login")
 
   const { id } = params
 

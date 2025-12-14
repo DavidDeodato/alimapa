@@ -1,5 +1,6 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,10 +12,8 @@ import type { ImpactCredit } from "@/lib/types"
 import { ProgramBadge } from "@/components/program-badge"
 
 export default async function MarketplacePage() {
-  const session = await getDemoSession()
-  if (!session || session.role !== "EMPRESA") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "EMPRESA") redirect("/auth/login")
 
   const credits: ImpactCredit[] = [
     {

@@ -1,5 +1,6 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -7,10 +8,8 @@ import { Award, CheckCircle2, FileText, ImageIcon } from "lucide-react"
 import Link from "next/link"
 
 export default async function CreditDetailPage({ params }: { params: { id: string } }) {
-  const session = await getDemoSession()
-  if (!session || session.role !== "EMPRESA") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "EMPRESA") redirect("/auth/login")
 
   const { id } = params
 

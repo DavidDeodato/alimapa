@@ -1,5 +1,6 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { StatusBadge } from "@/components/status-badge"
@@ -8,10 +9,8 @@ import { Calendar, Package, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 
 export default async function InstituicaoRequestDetailPage({ params }: { params: { id: string } }) {
-  const session = await getDemoSession()
-  if (!session || session.role !== "INSTITUICAO") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "INSTITUICAO") redirect("/auth/login")
 
   const { id } = params
 

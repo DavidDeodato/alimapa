@@ -57,14 +57,33 @@ const RegisterSchema = z.discriminatedUnion("role", [
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return err("JSON inválido no corpo da requisição.", 400)
+    }
+
     const parsed = RegisterSchema.safeParse(body)
-    if (!parsed.success) return NextResponse.json(err("Payload inválido"), { status: 400 })
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Payload inválido.",
+          details: parsed.error.issues.map((i) => ({
+            path: i.path.join("."),
+            message: i.message,
+            code: i.code,
+          })),
+        },
+        { status: 400 },
+      )
+    }
 
     const { email, password, displayName, role } = parsed.data
     const normalizedEmail = email.toLowerCase().trim()
     const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } })
-    if (existing) return NextResponse.json(err("Email já cadastrado."), { status: 409 })
+    if (existing) return err("Email já cadastrado.", 409)
 
     const passwordHash = await bcrypt.hash(password, 10)
 
@@ -86,14 +105,14 @@ export async function POST(req: Request) {
           municipalityId: municipality.id,
         },
       })
-      return NextResponse.json(ok({ userId: user.id }), { status: 201 })
+      return ok({ userId: user.id }, { status: 201 })
     }
 
     if (role === "INSTITUICAO") {
       const municipality = parsed.data.municipalityId
         ? await prisma.municipality.findUnique({ where: { id: parsed.data.municipalityId } })
         : await prisma.municipality.findFirst({ orderBy: { createdAt: "desc" } })
-      if (!municipality) return NextResponse.json(err("Nenhum município disponível. Cadastre um gestor primeiro."), { status: 400 })
+      if (!municipality) return err("Nenhum município disponível. Cadastre um gestor primeiro.", 400)
 
       const user = await prisma.user.create({
         data: {
@@ -115,14 +134,14 @@ export async function POST(req: Request) {
           },
         },
       })
-      return NextResponse.json(ok({ userId: user.id }), { status: 201 })
+      return ok({ userId: user.id }, { status: 201 })
     }
 
     if (role === "AGRICULTOR") {
       const municipality = parsed.data.municipalityId
         ? await prisma.municipality.findUnique({ where: { id: parsed.data.municipalityId } })
         : await prisma.municipality.findFirst({ orderBy: { createdAt: "desc" } })
-      if (!municipality) return NextResponse.json(err("Nenhum município disponível. Cadastre um gestor primeiro."), { status: 400 })
+      if (!municipality) return err("Nenhum município disponível. Cadastre um gestor primeiro.", 400)
 
       const user = await prisma.user.create({
         data: {
@@ -146,7 +165,7 @@ export async function POST(req: Request) {
           },
         },
       })
-      return NextResponse.json(ok({ userId: user.id }), { status: 201 })
+      return ok({ userId: user.id }, { status: 201 })
     }
 
     // EMPRESA
@@ -161,9 +180,9 @@ export async function POST(req: Request) {
         },
       },
     })
-    return NextResponse.json(ok({ userId: user.id }), { status: 201 })
+    return ok({ userId: user.id }, { status: 201 })
   } catch (e: any) {
-    return NextResponse.json(err("Erro interno ao cadastrar."), { status: 500 })
+    return err("Erro interno ao cadastrar.", 500)
   }
 }
 

@@ -1,14 +1,13 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { FileText, Download } from "lucide-react"
 
 export default async function DocumentosPage() {
-  const session = await getDemoSession()
-  if (!session || session.role !== "AGRICULTOR") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "AGRICULTOR") redirect("/auth/login")
 
   const documents = [
     {

@@ -1,15 +1,14 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileText, User, Calendar } from "lucide-react"
 import type { AuditLog } from "@/lib/types"
 
 export default async function AuditoriaPage() {
-  const session = await getDemoSession()
-  if (!session || session.role !== "GESTOR") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "GESTOR") redirect("/auth/login")
 
   const logs: AuditLog[] = [
     {

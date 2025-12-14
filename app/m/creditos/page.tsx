@@ -1,5 +1,6 @@
-import { getDemoSession } from "@/lib/demo-session"
 import { redirect } from "next/navigation"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth-options"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -8,10 +9,8 @@ import { Award, ExternalLink } from "lucide-react"
 import type { Credit } from "@/lib/types"
 
 export default async function CreditosPage() {
-  const session = await getDemoSession()
-  if (!session || session.role !== "GESTOR") {
-    redirect("/demo")
-  }
+  const session = await getServerSession(authOptions)
+  if (!session?.user || (session.user as any).role !== "GESTOR") redirect("/auth/login")
 
   const credits: Credit[] = [
     {
