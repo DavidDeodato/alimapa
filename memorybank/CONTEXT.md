@@ -87,6 +87,8 @@ O seed cria usuários demo com senha padrão:
 - Validação de provas (Gestor): análise com IA + animação
   - Rota: `POST /api/requests/:id/proofs/analyze` (usa agente `VALIDATOR`)
   - UI: `/m/requisicoes/:id` tem seletor de validador + animação (etapas + checklist preenchendo) + veredito.
-  - Gemini: `lib/gemini.ts` agora tenta auto-descobrir modelos via `ListModels` quando dá 404 e faz fallback automático.
+  - Gemini: `lib/gemini.ts` tenta auto-descobrir modelos via `ListModels` quando dá 404, junta texto vindo em múltiplas `parts` e usa timeout maior.
+  - Robustez JSON: se a IA retornar JSON inválido/truncado, a rota faz 1 retry automático; se ainda falhar, retorna `analysis.fallback=true` (REVIEW/REJECT) ao invés de quebrar o fluxo.
+  - Mobile-first: `/m/requisicoes/:id` usa padding/typografia responsiva, stepper sem overflow (sem `scale` no mobile) e detalhes laterais colapsáveis via `<details>` no celular.
 
 

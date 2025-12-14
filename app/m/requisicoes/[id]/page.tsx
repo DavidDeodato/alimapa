@@ -522,6 +522,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     Veredito: <span className="font-semibold">{proofAnalysis.verdict ?? "-"}</span> • Confiança:{" "}
                     <span className="font-semibold">{Math.round((proofAnalysis.confidence ?? 0) * 100)}%</span>
                   </div>
+                  {(proofAnalysis as any)?.fallback ? (
+                    <div className="text-xs">
+                      <Badge variant="outline" className="border-amber-600 text-amber-700">
+                        Fallback (IA retornou resposta inválida)
+                      </Badge>
+                    </div>
+                  ) : null}
                   {Array.isArray(proofAnalysis.missing) && proofAnalysis.missing.length ? (
                     <div className="text-sm">
                       <div className="font-medium mb-1">Faltando</div>
@@ -532,22 +539,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                       </ul>
                     </div>
                   ) : null}
-                  {Array.isArray(proofAnalysis.issues) && proofAnalysis.issues.length ? (
-                    <div className="text-sm">
-                      <div className="font-medium mb-1">Inconsistências</div>
-                      <ul className="list-disc pl-5 text-muted-foreground">
-                        {proofAnalysis.issues.map((x: any, idx: number) => (
-                          <li key={idx}>{String(x)}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {proofAnalysis.notes ? (
-                    <div className="text-sm">
-                      <div className="font-medium mb-1">Notas</div>
-                      <div className="text-muted-foreground whitespace-pre-wrap">{String(proofAnalysis.notes)}</div>
-                    </div>
-                  ) : null}
+                  {/* notes/issues removidos pra reduzir token e evitar truncamento */}
                 </div>
               ) : null}
             </div>

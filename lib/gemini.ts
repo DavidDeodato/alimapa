@@ -78,7 +78,7 @@ export async function geminiGenerateTextWithOptions(
   ].map(normalizeModelId)
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 12_000)
+  const timeout = setTimeout(() => controller.abort(), 25_000)
 
   try {
     let lastErr: any = null
@@ -97,7 +97,8 @@ export async function geminiGenerateTextWithOptions(
           contents: [
             {
               role: "user",
-              parts: [{ text: input.user }],
+              // redundância intencional: alguns modelos ignoram systemInstruction dependendo da versão
+              parts: [{ text: `${input.system}\n\n---\n\n${input.user}` }],
             },
           ],
           generationConfig: {
@@ -128,7 +129,11 @@ export async function geminiGenerateTextWithOptions(
       }
 
       const json = await res.json().catch(() => null)
-      const text = json?.candidates?.[0]?.content?.parts?.[0]?.text
+      const parts = json?.candidates?.[0]?.content?.parts
+      const text =
+        Array.isArray(parts) && parts.length
+          ? parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("")
+          : json?.candidates?.[0]?.content?.parts?.[0]?.text
       if (text && typeof text === "string") {
         cachedModelId = modelId
         cachedAt = Date.now()

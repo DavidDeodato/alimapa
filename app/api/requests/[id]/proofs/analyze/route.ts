@@ -12,18 +12,14 @@ const BodySchema = z.object({
 const AnalysisSchema = z.object({
   verdict: z.enum(["APPROVE", "REVIEW", "REJECT"]),
   confidence: z.number().min(0).max(1),
-  checklist: z
-    .array(
-      z.object({
-        item: z.string().min(1),
-        status: z.enum(["PASS", "FAIL", "MISSING"]),
-        reason: z.string().optional().default(""),
-      }),
-    )
-    .default([]),
-  missing: z.array(z.string()).optional().default([]),
-  issues: z.array(z.string()).optional().default([]),
-  notes: z.string().optional().default(""),
+  checklist: z.array(
+    z.object({
+      item: z.string().min(1),
+      status: z.enum(["PASS", "FAIL", "MISSING"]),
+      reason: z.string().optional().default(""),
+    }),
+  ),
+  missing: z.array(z.string()).default([]),
 })
 
 function extractJsonObject(text: string): string | null {
@@ -36,13 +32,21 @@ function extractJsonObject(text: string): string | null {
 function fallbackAnalysis(checklist: string[], evidenceCount: number, reason: string) {
   const items = checklist.map((item) => ({ item, status: "MISSING" as const, reason: "Não foi possível validar automaticamente." }))
   return {
+    fallback: true,
     verdict: evidenceCount > 0 ? ("REVIEW" as const) : ("REJECT" as const),
     confidence: 0.25,
     checklist: items,
     missing: checklist,
-    issues: ["Modelo de IA retornou resposta inválida."],
-    notes: reason,
+    // nota interna apenas para auditoria (não exibimos no schema público)
+    _internalReason: reason,
   }
+}
+
+async function callValidatorLLM(params: { system: string; user: string }) {
+  return geminiGenerateTextWithOptions(
+    { system: params.system, user: params.user },
+    { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 450 },
+  )
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -85,30 +89,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         "Documento de identificação da instituição",
       ]
 
-  const evidence = (request.evidence || []).map((e) => ({
+  const evidence = (request.evidence || []).map((e) => {
+    const extracted = typeof e.extractedText === "string" ? e.extractedText : ""
+    const preview = extracted ? extracted.slice(0, 1800) : ""
+    return {
     id: e.id,
     scope: e.scope,
     originalName: e.originalName,
     fileType: e.fileType,
     resourceType: e.resourceType,
     url: e.url,
-    extractedText: e.extractedText,
+      extractedTextPreview: preview || undefined,
+      extractedTextChars: extracted ? extracted.length : 0,
     createdAt: e.createdAt.toISOString(),
-  }))
+    }
+  })
 
   const system = [
     "Você é um agente VALIDADOR do Alimapa.",
     "Seu trabalho: analisar provas (fotos/documentos) anexadas a uma requisição e preencher um checklist, apontando faltas e inconsistências.",
     "Responda SOMENTE com JSON válido, sem markdown, sem texto extra, sem crases.",
-    "Use o schema exato:",
+    "Retorne o JSON em UMA ÚNICA LINHA (sem quebras).",
+    "Use o schema exato (não inclua campos extras):",
     JSON.stringify(
       {
         verdict: "APPROVE|REVIEW|REJECT",
         confidence: 0.0,
         checklist: [{ item: "string", status: "PASS|FAIL|MISSING", reason: "string" }],
         missing: ["string"],
-        issues: ["string"],
-        notes: "string",
       },
       null,
       2,
@@ -120,8 +128,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         confidence: 0.62,
         checklist: [{ item: "Foto externa do local", status: "MISSING", reason: "Nenhuma imagem externa anexada." }],
         missing: ["Foto externa do local"],
-        issues: [],
-        notes: "Recomendo solicitar foto externa e documento legível.",
       },
       null,
       2,
@@ -144,14 +150,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     "- Se faltar evidência para um item do checklist, marque MISSING.",
     "- Se existir evidência mas houver inconsistência (ex.: documento ilegível), marque FAIL e explique.",
     "- Se estiver ok, marque PASS.",
+    "- Preencha missing[] com os itens que NÃO estão PASS.",
   ].join("\n")
 
   let analysisRaw: string
   try {
-    analysisRaw = await geminiGenerateTextWithOptions(
-      { system, user },
-      { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 900 },
-    )
+    analysisRaw = await callValidatorLLM({ system, user })
   } catch (e: any) {
     const fb = fallbackAnalysis(checklist, evidence.length, `Falha ao chamar IA: ${e?.message || "erro desconhecido"}`)
     await auditLog({
@@ -181,15 +185,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     analysisObj = JSON.parse(jsonText)
   } catch {
-    const fb = fallbackAnalysis(checklist, evidence.length, `IA retornou JSON inválido. Resposta bruta: ${analysisRaw}`.slice(0, 6000))
-    await auditLog({
-      actorUserId: auth.user.id,
-      action: "request.proofs_analyzed",
-      entityType: "Request",
-      entityId: request.id,
-      details: { agentConfigId: agent.id, verdict: fb.verdict, confidence: fb.confidence, fallback: true },
-    })
-    return ok({ analysis: fb })
+    // retry 1x: re-emite JSON (não tenta consertar string truncada)
+    try {
+      const retrySystem =
+        system +
+        "\n\nIMPORTANTE: Sua resposta anterior estava truncada/inválida. Refaça do zero e envie SOMENTE o JSON válido."
+      const retryRaw = await callValidatorLLM({ system: retrySystem, user })
+      const retryText = extractJsonObject(retryRaw) || retryRaw
+      analysisObj = JSON.parse(retryText)
+    } catch {
+      const fb = fallbackAnalysis(
+        checklist,
+        evidence.length,
+        `IA retornou JSON inválido mesmo após retry. Resposta bruta: ${analysisRaw}`.slice(0, 2000),
+      )
+      await auditLog({
+        actorUserId: auth.user.id,
+        action: "request.proofs_analyzed",
+        entityType: "Request",
+        entityId: request.id,
+        details: {
+          agentConfigId: agent.id,
+          verdict: fb.verdict,
+          confidence: fb.confidence,
+          fallback: true,
+          reason: (fb as any)._internalReason,
+        },
+      })
+      // ainda retornamos JSON no shape esperado (sem campos extras)
+      return ok({
+        analysis: {
+          verdict: fb.verdict,
+          confidence: fb.confidence,
+          checklist: fb.checklist,
+          missing: fb.missing,
+          fallback: true,
+        },
+      })
+    }
   }
 
   const validated = AnalysisSchema.safeParse(analysisObj)
@@ -204,9 +237,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       action: "request.proofs_analyzed",
       entityType: "Request",
       entityId: request.id,
-      details: { agentConfigId: agent.id, verdict: fb.verdict, confidence: fb.confidence, fallback: true },
+      details: {
+        agentConfigId: agent.id,
+        verdict: fb.verdict,
+        confidence: fb.confidence,
+        fallback: true,
+        reason: (fb as any)._internalReason,
+      },
     })
-    return ok({ analysis: fb })
+    return ok({
+      analysis: {
+        verdict: fb.verdict,
+        confidence: fb.confidence,
+        checklist: fb.checklist,
+        missing: fb.missing,
+        fallback: true,
+      },
+    })
   }
 
   await auditLog({
@@ -217,7 +264,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     details: { agentConfigId: agent.id, verdict: validated.data.verdict, confidence: validated.data.confidence },
   })
 
-  return ok({ analysis: validated.data })
+  return ok({
+    analysis: {
+      ...validated.data,
+      fallback: false,
+    },
+  })
 }
 
 
