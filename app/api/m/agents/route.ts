@@ -6,12 +6,14 @@ import { auditLog } from "@/lib/audit"
 
 const UpsertSchema = z.object({
   farmerId: z.string().optional().nullable(), // "__DEFAULT__" ou null => default municipal
+  type: z.enum(["NEGOTIATOR", "VALIDATOR"]).optional().default("NEGOTIATOR"),
   personality: z.string().min(2),
   objectives: z.array(z.string().min(1)).default([]),
   offerCalculation: z.enum(["FIXED_PER_PRODUCT", "CUSTOM_PER_FARMER"]),
   fixedDiscounts: z.record(z.number()).optional(),
   customFormula: z.string().optional().nullable(),
   instructions: z.string().optional().nullable(),
+  validatorConfig: z.any().optional(),
   isActive: z.boolean().optional().default(true),
 })
 
@@ -34,12 +36,14 @@ export async function GET() {
       id: c.id,
       farmerId: c.farmerId ?? "__DEFAULT__",
       farmerName: c.farmerName ?? c.farmer?.name ?? "Padrão do município",
+      type: c.type as any,
       personality: c.personality,
       objectives: c.objectives,
       offerCalculation: c.offerCalculation as any,
       fixedDiscounts: (c.fixedDiscounts as any) ?? undefined,
       customFormula: c.customFormula ?? undefined,
       instructions: c.instructions ?? undefined,
+      validatorConfig: (c.validatorConfig as any) ?? undefined,
       isActive: c.isActive,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
@@ -65,6 +69,7 @@ export async function POST(req: Request) {
 
   const rawFarmerId = parsed.data.farmerId
   const farmerId = !rawFarmerId || rawFarmerId === "__DEFAULT__" ? null : rawFarmerId
+  const type = parsed.data.type ?? "NEGOTIATOR"
 
   let farmerName: string | null = null
   if (farmerId) {
@@ -76,7 +81,7 @@ export async function POST(req: Request) {
 
   // Se já existe config para esse farmer (ou default), atualiza; senão cria
   const existing = await prisma.agentConfig.findFirst({
-    where: { municipalityId, farmerId: farmerId ?? null },
+    where: { municipalityId, farmerId: farmerId ?? null, type },
   })
 
   const saved = existing
@@ -84,12 +89,14 @@ export async function POST(req: Request) {
         where: { id: existing.id },
         data: {
           farmerName,
+          type,
           personality: parsed.data.personality,
           objectives: parsed.data.objectives,
           offerCalculation: parsed.data.offerCalculation,
           fixedDiscounts: parsed.data.fixedDiscounts ?? undefined,
           customFormula: parsed.data.customFormula ?? null,
           instructions: parsed.data.instructions ?? null,
+          validatorConfig: parsed.data.validatorConfig ?? null,
           isActive: parsed.data.isActive,
         },
       })
@@ -98,12 +105,14 @@ export async function POST(req: Request) {
           municipalityId,
           farmerId,
           farmerName,
+          type,
           personality: parsed.data.personality,
           objectives: parsed.data.objectives,
           offerCalculation: parsed.data.offerCalculation,
           fixedDiscounts: parsed.data.fixedDiscounts ?? undefined,
           customFormula: parsed.data.customFormula ?? null,
           instructions: parsed.data.instructions ?? null,
+          validatorConfig: parsed.data.validatorConfig ?? null,
           isActive: parsed.data.isActive,
         },
       })
@@ -113,7 +122,7 @@ export async function POST(req: Request) {
     action: "agent_config.upserted",
     entityType: "AgentConfig",
     entityId: saved.id,
-    details: { farmerId: farmerId ?? null },
+    details: { farmerId: farmerId ?? null, type },
   })
 
   return ok({
@@ -121,12 +130,14 @@ export async function POST(req: Request) {
       id: saved.id,
       farmerId: saved.farmerId ?? "__DEFAULT__",
       farmerName: saved.farmerName ?? "Padrão do município",
+      type: saved.type as any,
       personality: saved.personality,
       objectives: saved.objectives,
       offerCalculation: saved.offerCalculation as any,
       fixedDiscounts: (saved.fixedDiscounts as any) ?? undefined,
       customFormula: saved.customFormula ?? undefined,
       instructions: saved.instructions ?? undefined,
+      validatorConfig: (saved.validatorConfig as any) ?? undefined,
       isActive: saved.isActive,
       createdAt: saved.createdAt.toISOString(),
       updatedAt: saved.updatedAt.toISOString(),

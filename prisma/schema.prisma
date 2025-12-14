@@ -68,6 +68,26 @@ enum SenderRole {
   SYSTEM
 }
 
+enum AgentType {
+  NEGOTIATOR
+  VALIDATOR
+}
+
+enum EvidenceScope {
+  REQUEST_PROOF
+  REQUEST_DOCUMENT
+  DELIVERY_PROOF
+  DELIVERY_DOCUMENT
+  INSTITUTION_PHOTO
+  FARMER_DOCUMENT
+}
+
+enum EvidenceExtractionStatus {
+  PENDING
+  DONE
+  FAILED
+}
+
 model Municipality {
   id        String  @id @default(cuid())
   name      String
@@ -102,6 +122,7 @@ model User {
   company     Company?
   auditLogs   AuditLog[]
   agentRuns   AgentRun[]
+  uploadedEvidence Evidence[] @relation("EvidenceUploadedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -127,6 +148,7 @@ model Farmer {
   agentConfigs AgentConfig[]
   credits      ImpactCredit[]
   conversations Conversation[]
+  evidence      Evidence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -148,6 +170,7 @@ model Institution {
 
   requests Request[]
   credits  ImpactCredit[]
+  evidence Evidence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -206,6 +229,7 @@ model Offer {
   // snapshot do que foi proposto (para a UI)
   items        OfferItem[]
   conversation Conversation?
+  evidence     Evidence[]
   credits      ImpactCredit[]
 
   createdAt DateTime @default(now())
@@ -231,18 +255,22 @@ model AgentConfig {
   farmer          Farmer? @relation(fields: [farmerId], references: [id])
 
   farmerName      String?
+  type            AgentType @default(NEGOTIATOR)
   personality     String
   objectives      String[]
   offerCalculation String
   fixedDiscounts  Json?
   customFormula   String?
   instructions    String?
+  // Para agentes validadores (regras/checklists/config por escopo). Mantemos JSON para evoluir rápido sem travar schema.
+  validatorConfig Json?
   isActive        Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([municipalityId])
+  @@index([municipalityId, type])
 
   conversations Conversation[]
 }
@@ -296,11 +324,39 @@ model Message {
 
 model Evidence {
   id         String @id @default(cuid())
-  requestId  String
-  request    Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  scope      EvidenceScope @default(REQUEST_PROOF)
+
+  requestId  String?
+  request    Request? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  offerId    String?
+  offer      Offer? @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  institutionId String?
+  institution   Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  farmerId   String?
+  farmer     Farmer? @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
   url        String
-  kind       String
+  publicId   String?
+  resourceType String? // image | raw
+  fileType   String?   // mime type
+  originalName String?
+  sizeBytes  Int?
+  kind       String?
+
+  extractedText     String?
+  extractionStatus  EvidenceExtractionStatus @default(PENDING)
+
+  uploadedByUserId String?
+  uploadedByUser   User? @relation("EvidenceUploadedBy", fields: [uploadedByUserId], references: [id])
+  uploadedByRole   UserRole?
   createdAt  DateTime @default(now())
+
+  @@index([scope])
+  @@index([requestId])
+  @@index([offerId])
 }
 
 model DeliveryConfirmation {

@@ -67,6 +67,7 @@ export async function orchestrateRequest(params: {
     if (!selectedAgentConfig) throw new Error("Agente não encontrado")
     if (!selectedAgentConfig.isActive) throw new Error("Agente inativo")
     if (selectedAgentConfig.municipalityId !== request.municipalityId) throw new Error("Agente não pertence ao município da requisição")
+    if (selectedAgentConfig.type !== "NEGOTIATOR") throw new Error("Agente selecionado não é do tipo NEGOTIATOR")
   }
 
   const farmers = await prisma.farmer.findMany({
@@ -140,10 +141,10 @@ export async function orchestrateRequest(params: {
     const agentConfig =
       selectedAgentConfig ||
       (await prisma.agentConfig.findFirst({
-        where: { municipalityId: request.municipalityId, farmerId: candidate.farmer.id, isActive: true },
+        where: { municipalityId: request.municipalityId, farmerId: candidate.farmer.id, type: "NEGOTIATOR", isActive: true },
       })) ||
       (await prisma.agentConfig.findFirst({
-        where: { municipalityId: request.municipalityId, farmerId: null, isActive: true },
+        where: { municipalityId: request.municipalityId, farmerId: null, type: "NEGOTIATOR", isActive: true },
       }))
 
     const items = request.items.map((i) => ({ productName: i.productName, quantity: Number(i.quantity), unit: i.unit }))

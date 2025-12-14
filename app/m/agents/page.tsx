@@ -24,6 +24,7 @@ export default function AgentsPage() {
   const [farmers, setFarmers] = useState<Array<{ id: string; name: string }>>([])
 
   const [configForm, setConfigForm] = useState({
+    type: "NEGOTIATOR" as "NEGOTIATOR" | "VALIDATOR",
     farmerId: "__DEFAULT__",
     personality: "",
     objectives: "",
@@ -31,6 +32,8 @@ export default function AgentsPage() {
     fixedDiscounts: "",
     customFormula: "",
     instructions: "",
+    validatorChecklist: "",
+    validatorStrictness: "3",
   })
 
   const filteredAgents = useMemo(() => {
@@ -80,6 +83,7 @@ export default function AgentsPage() {
   const openNew = () => {
     setSelectedAgent(null)
     setConfigForm({
+      type: "NEGOTIATOR",
       farmerId: "__DEFAULT__",
       personality: "",
       objectives: "",
@@ -87,6 +91,8 @@ export default function AgentsPage() {
       fixedDiscounts: "",
       customFormula: "",
       instructions: "",
+      validatorChecklist: "",
+      validatorStrictness: "3",
     })
     setIsConfigOpen(true)
   }
@@ -94,6 +100,7 @@ export default function AgentsPage() {
   const openEdit = (agent: AgentConfig) => {
     setSelectedAgent(agent)
     setConfigForm({
+      type: (agent.type as any) || "NEGOTIATOR",
       farmerId: agent.farmerId || "__DEFAULT__",
       personality: agent.personality || "",
       objectives: (agent.objectives || []).join("\n"),
@@ -105,13 +112,32 @@ export default function AgentsPage() {
         : "",
       customFormula: agent.customFormula || "",
       instructions: agent.instructions || "",
+      validatorChecklist: Array.isArray((agent as any).validatorConfig?.checklist)
+        ? (agent as any).validatorConfig.checklist.join("\n")
+        : "",
+      validatorStrictness:
+        typeof (agent as any).validatorConfig?.strictness === "number"
+          ? String((agent as any).validatorConfig.strictness)
+          : "3",
     })
     setIsConfigOpen(true)
   }
 
   const save = async () => {
     try {
+      const validatorConfig =
+        configForm.type === "VALIDATOR"
+          ? {
+              checklist: configForm.validatorChecklist
+                .split("\n")
+                .map((l) => l.trim())
+                .filter(Boolean),
+              strictness: Math.min(Math.max(Number(configForm.validatorStrictness) || 3, 1), 5),
+            }
+          : undefined
+
       const payload = {
+        type: configForm.type,
         farmerId: configForm.farmerId === "__DEFAULT__" ? "__DEFAULT__" : configForm.farmerId,
         personality: configForm.personality,
         objectives: configForm.objectives
@@ -119,9 +145,16 @@ export default function AgentsPage() {
           .map((l) => l.trim())
           .filter(Boolean),
         offerCalculation: configForm.offerCalculation,
-        fixedDiscounts: configForm.offerCalculation === "FIXED_PER_PRODUCT" ? parseFixedDiscounts(configForm.fixedDiscounts) : undefined,
-        customFormula: configForm.offerCalculation === "CUSTOM_PER_FARMER" ? configForm.customFormula || undefined : undefined,
+        fixedDiscounts:
+          configForm.type === "NEGOTIATOR" && configForm.offerCalculation === "FIXED_PER_PRODUCT"
+            ? parseFixedDiscounts(configForm.fixedDiscounts)
+            : undefined,
+        customFormula:
+          configForm.type === "NEGOTIATOR" && configForm.offerCalculation === "CUSTOM_PER_FARMER"
+            ? configForm.customFormula || undefined
+            : undefined,
         instructions: configForm.instructions || undefined,
+        validatorConfig,
         isActive: selectedAgent?.isActive ?? true,
       }
       const res = await fetch("/api/m/agents", {
@@ -157,7 +190,9 @@ export default function AgentsPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             Gestão de Agentes IA
           </h1>
-          <p className="text-muted-foreground mt-1">Configure e monitore os agentes que negociam com os agricultores</p>
+          <p className="text-muted-foreground mt-1">
+            Configure agentes NEGOCIADORES (propostas/conversas) e VALIDADORES (provas/documentos)
+          </p>
         </div>
         <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
           <DialogTrigger asChild>
@@ -171,6 +206,22 @@ export default function AgentsPage() {
               <DialogTitle>Configurar Agente IA</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 pt-4">
+              <div className="space-y-2">
+                <Label>Tipo de Agente</Label>
+                <Select value={configForm.type} onValueChange={(v: any) => setConfigForm({ ...configForm, type: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NEGOTIATOR">Negociador (propostas e conversas)</SelectItem>
+                    <SelectItem value="VALIDATOR">Validador (provas e documentos)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  Negociador é usado para enviar propostas e conversar. Validador é usado para analisar provas e lastro.
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label>Agricultor (opcional)</Label>
                 <Select value={configForm.farmerId} onValueChange={(v) => setConfigForm({ ...configForm, farmerId: v })}>
@@ -213,6 +264,7 @@ export default function AgentsPage() {
                 <Select
                   value={configForm.offerCalculation}
                   onValueChange={(value: any) => setConfigForm({ ...configForm, offerCalculation: value })}
+                  disabled={configForm.type !== "NEGOTIATOR"}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -224,7 +276,7 @@ export default function AgentsPage() {
                 </Select>
               </div>
 
-              {configForm.offerCalculation === "FIXED_PER_PRODUCT" ? (
+              {configForm.type === "NEGOTIATOR" && configForm.offerCalculation === "FIXED_PER_PRODUCT" ? (
                 <div className="space-y-2">
                   <Label>Descontos Fixos (%)</Label>
                   <Textarea
@@ -237,7 +289,7 @@ export default function AgentsPage() {
                     Digite um produto por linha no formato: produto: desconto%
                   </p>
                 </div>
-              ) : (
+              ) : configForm.type === "NEGOTIATOR" ? (
                 <div className="space-y-2">
                   <Label>Fórmula Personalizada</Label>
                   <Textarea
@@ -250,7 +302,29 @@ export default function AgentsPage() {
                     Variáveis disponíveis: valorMercado, distancia, quantidade
                   </p>
                 </div>
-              )}
+              ) : null}
+
+              {configForm.type === "VALIDATOR" ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Checklist (um por linha)</Label>
+                    <Textarea
+                      placeholder="Ex: Fotos internas do local&#10;Fotos externas do local&#10;Documento de identificação&#10;Comprovante de vínculo"
+                      rows={5}
+                      value={configForm.validatorChecklist}
+                      onChange={(e) => setConfigForm({ ...configForm, validatorChecklist: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Rigor (1–5)</Label>
+                    <Input
+                      value={configForm.validatorStrictness}
+                      onChange={(e) => setConfigForm({ ...configForm, validatorStrictness: e.target.value })}
+                      placeholder="3"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label>Instruções Adicionais</Label>
@@ -305,9 +379,12 @@ export default function AgentsPage() {
                     <Badge variant={agent.isActive ? "default" : "secondary"}>
                       {agent.isActive ? "Ativo" : "Pausado"}
                     </Badge>
-                    <Badge variant="outline">
-                      {agent.offerCalculation === "FIXED_PER_PRODUCT" ? "Desconto Fixo" : "Fórmula Custom"}
-                    </Badge>
+                    <Badge variant="outline">{agent.type === "VALIDATOR" ? "Validador" : "Negociador"}</Badge>
+                    {agent.type !== "VALIDATOR" ? (
+                      <Badge variant="outline">
+                        {agent.offerCalculation === "FIXED_PER_PRODUCT" ? "Desconto Fixo" : "Fórmula Custom"}
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
               </div>

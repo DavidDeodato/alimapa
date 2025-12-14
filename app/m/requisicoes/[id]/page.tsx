@@ -80,10 +80,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           id: a.id,
           farmerName: a.farmerName,
           isActive: !!a.isActive,
+          type: a.type,
         }))
         if (!cancelled) {
-          setAgentConfigs(list.filter((a: any) => a.isActive))
-          if (!selectedAgentConfigId && list.length) setSelectedAgentConfigId(list[0].id)
+          const usable = list.filter((a: any) => a.isActive && a.type !== "VALIDATOR")
+          setAgentConfigs(usable)
+          if (!selectedAgentConfigId && usable.length) setSelectedAgentConfigId(usable[0].id)
         }
       } catch {
         // silencioso

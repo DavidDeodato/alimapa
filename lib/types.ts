@@ -117,12 +117,14 @@ export interface AgentConfig {
   id: string
   farmerId: string
   farmerName: string
+  type?: "NEGOTIATOR" | "VALIDATOR"
   personality: string
   objectives: string[]
   offerCalculation: "FIXED_PER_PRODUCT" | "CUSTOM_PER_FARMER"
   fixedDiscounts?: Record<string, number>
   customFormula?: string
   instructions?: string
+  validatorConfig?: any
   isActive: boolean
   createdAt: string
   updatedAt: string

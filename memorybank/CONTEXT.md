@@ -71,4 +71,15 @@ O seed cria usuários demo com senha padrão:
   - UI `/m/auditoria` agora lista logs reais
   - Helper `lib/audit.ts` centraliza escrita de logs sem quebrar o fluxo principal.
 
+- Propostas (Agricultor): APIs reais + UI sem mock
+  - `GET /api/f/offers` (lista)
+  - `GET /api/f/offers/:id` (detalhe)
+  - `POST /api/f/offers/:id/accept` e `/decline`
+  - UI `/f/propostas`, `/f/propostas/:id` e `/f/propostas/:id/chat` agora consomem API (inclui aceitar/recusar).
+
+- Agentes (Gestor): tipos NEGOTIATOR vs VALIDATOR
+  - Prisma: `AgentType` + `AgentConfig.type` + `AgentConfig.validatorConfig`
+  - `/m/agents` permite criar/editar por tipo (campos de validador aparecem quando selecionado)
+  - Orquestrador de propostas usa apenas agentes `NEGOTIATOR` (evita selecionar validador por engano).
+
 
