@@ -2,11 +2,6 @@ import { redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth-options"
 import CreditDetailClient from "./credit-detail-client"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Award, CheckCircle2, FileText, ImageIcon } from "lucide-react"
-import Link from "next/link"
 
 export default async function CreditDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -15,107 +10,4 @@ export default async function CreditDetailPage({ params }: { params: Promise<{ i
   return <CreditDetailClient id={id} />
 }
 
-// NOTE: o componente de UI do detalhe fica em `credit-detail-client.tsx` (client component)
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-foreground">Crédito de Impacto</h1>
-            <Badge variant="default">Disponível</Badge>
-          </div>
-          <p className="text-muted-foreground">{loading ? "Carregando..." : credit?.institutionName ?? ""}</p>
-        </div>
-        <Button variant="outline" asChild>
-          <Link href="/c/marketplace">Voltar</Link>
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Award className="h-5 w-5" />
-              Resumo do Crédito
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <div className="text-4xl font-bold">{credit?.impactCredits ?? "-"}</div>
-                <div className="text-lg text-muted-foreground">{credit?.unitType ?? "-"}</div>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="font-medium">Território</div>
-                  <div className="text-muted-foreground">{credit?.institutionName ?? "-"}</div>
-                </div>
-                <div>
-                  <div className="font-medium">Emissão</div>
-                  <div className="text-muted-foreground">
-                    {credit?.createdAt ? new Date(credit.createdAt).toLocaleDateString("pt-BR") : "-"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5" />
-              Lastro - Linha do Tempo
-            </h2>
-            <div className="space-y-4">
-              {timeline.map((event, idx) => (
-                <div key={idx} className="flex gap-3">
-                  <div className="flex flex-col items-center">
-                    <div className="h-2 w-2 rounded-full bg-green-500" />
-                    {idx < timeline.length - 1 && <div className="h-full w-px bg-border mt-1" />}
-                  </div>
-                  <div className="flex-1 pb-4">
-                    <div className="text-sm font-medium">{event.action}</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {new Date(event.timestamp).toLocaleString("pt-BR")}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <ImageIcon className="h-5 w-5" />
-              Evidências
-            </h2>
-            <p className="text-sm text-muted-foreground">Nenhuma evidência fotográfica anexada</p>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Adquirir Crédito</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Este crédito está lastreado em uma entrega real e verificada no território.
-            </p>
-            <Button className="w-full mb-3" onClick={handleBuy} disabled={loading || credit?.status !== "DISPONIVEL"}>
-              {credit?.status === "VENDIDO" ? "Já comprado" : "Comprar Crédito"}
-            </Button>
-            <Button variant="outline" asChild className="w-full bg-transparent">
-              <Link href={credit?.requestId ? `/m/requisicoes/${credit.requestId}` : "/c/marketplace"}>
-                <FileText className="h-4 w-4 mr-2" />
-                Ver Requisição Original
-              </Link>
-            </Button>
-          </Card>
-
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Certificação</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Após a compra, você receberá um certificado digital comprovando o impacto social.
-            </p>
-          </Card>
-        </div>
-      </div>
-    </div>
-  )
-}

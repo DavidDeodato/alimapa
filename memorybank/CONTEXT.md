@@ -91,4 +91,8 @@ O seed cria usuários demo com senha padrão:
   - Robustez JSON: se a IA retornar JSON inválido/truncado, a rota faz 1 retry automático; se ainda falhar, retorna `analysis.fallback=true` (REVIEW/REJECT) ao invés de quebrar o fluxo.
   - Mobile-first: `/m/requisicoes/:id` usa padding/typografia responsiva, stepper sem overflow (sem `scale` no mobile) e detalhes laterais colapsáveis via `<details>` no celular.
 
+- Hotfix build (Vercel): `app/c/creditos/[id]/page.tsx`
+  - Arquivo tinha JSX órfão e depois foi corrompido por escapes.
+  - Foi reescrito como wrapper server mínimo que só valida role EMPRESA e renderiza `CreditDetailClient`.
+
 
