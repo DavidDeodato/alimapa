@@ -48,7 +48,7 @@ export default function PropostasPage() {
   const visible = useMemo(() => offers, [offers])
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-8 space-y-8">
       <div className="space-y-3">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
           Minhas Propostas
@@ -103,6 +103,24 @@ export default function PropostasPage() {
                       </div>
                     </div>
 
+                    {/* Instituição + prazo */}
+                    <div className="grid gap-2 text-sm text-muted-foreground">
+                      {offer.institutionName ? (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4" />
+                          <span className="font-medium text-foreground">{offer.institutionName}</span>
+                        </div>
+                      ) : null}
+                      {offer.needByDate ? (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4" />
+                          <span>
+                            Entrega até <span className="font-medium text-foreground">{new Date(offer.needByDate).toLocaleDateString("pt-BR")}</span>
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+
                     {/* Valores e créditos gerados */}
                     <div className="grid md:grid-cols-2 gap-4 p-4 bg-gradient-to-br from-muted/50 to-background rounded-lg">
                       <div className="space-y-2">
@@ -148,6 +166,19 @@ export default function PropostasPage() {
                       </div>
                     </div>
 
+                    {/* Última mensagem do chat (home) */}
+                    {offer.lastMessagePreview ? (
+                      <div className="pt-2 border-t">
+                        <div className="text-sm font-semibold mb-1">Última mensagem</div>
+                        <div className="text-sm text-muted-foreground line-clamp-2">{offer.lastMessagePreview}</div>
+                        {offer.lastMessageAt ? (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {new Date(offer.lastMessageAt).toLocaleString("pt-BR")}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     {/* Itens */}
                     <div className="pt-2 border-t">
                       <div className="text-sm font-semibold mb-2">Itens Solicitados</div>
@@ -162,9 +193,12 @@ export default function PropostasPage() {
                   </div>
 
                   {/* Ações */}
-                  <div className="flex lg:flex-col gap-2 lg:w-32">
+                  <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:w-44">
                     <Button asChild className="flex-1 bg-gradient-to-r from-primary to-secondary h-12">
-                      <Link href={`/f/propostas/${offer.id}`}>Abrir</Link>
+                      <Link href={`/f/propostas/${offer.id}`}>Abrir proposta</Link>
+                    </Button>
+                    <Button asChild variant="outline" className="flex-1 bg-transparent h-12">
+                      <Link href={`/f/propostas/${offer.id}/chat`}>Abrir chat</Link>
                     </Button>
                   </div>
                 </div>

@@ -87,6 +87,11 @@ export interface Offer {
   marketValue?: number
   distance?: number
   createdAt: string
+  institutionName?: string
+  needByDate?: string
+  conversationId?: string
+  lastMessagePreview?: string
+  lastMessageAt?: string
 }
 
 export interface Credit {

@@ -1,6 +1,8 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
 import { redirect } from "next/navigation"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
+import { useSession } from "next-auth/react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,60 +12,65 @@ import { Badge } from "@/components/ui/badge"
 import { Search, Award, ExternalLink, User, Package, MapPin, TrendingUp } from "lucide-react"
 import type { ImpactCredit } from "@/lib/types"
 import { ProgramBadge } from "@/components/program-badge"
+import { useToast } from "@/hooks/use-toast"
 
-export default async function MarketplacePage() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || (session.user as any).role !== "EMPRESA") redirect("/auth/login")
+export default function MarketplacePage() {
+  const { data: session, status } = useSession()
+  const { toast } = useToast()
 
-  const credits: ImpactCredit[] = [
-    {
-      id: "cred-001",
-      farmerId: "farm-001",
-      farmerName: "João da Silva",
-      offerId: "off-001",
-      requestId: "req-001",
-      institutionId: "inst-001",
-      institutionName: "Escola Municipal João Paulo II",
-      monetaryValue: 450,
-      impactCredits: 50,
-      unitType: "Refeições escolares",
-      status: "DISPONIVEL",
-      program: "PNAE",
-      backing: {
-        requestId: "req-001",
-        offerId: "off-001",
-        farmerId: "farm-001",
-        deliveryConfirmedAt: "2025-01-12T10:00:00Z",
-      },
-      createdAt: "2025-01-12T10:00:00Z",
-      updatedAt: "2025-01-12T10:00:00Z",
-    },
-    {
-      id: "cred-002",
-      farmerId: "farm-002",
-      farmerName: "Maria Santos",
-      offerId: "off-002",
-      requestId: "req-002",
-      institutionId: "inst-002",
-      institutionName: "Creche Municipal Pequenos Sonhos",
-      monetaryValue: 800,
-      impactCredits: 100,
-      unitType: "Kg de alimentos orgânicos",
-      status: "DISPONIVEL",
-      program: "PNAE",
-      backing: {
-        requestId: "req-002",
-        offerId: "off-002",
-        farmerId: "farm-002",
-        deliveryConfirmedAt: "2025-01-13T14:00:00Z",
-      },
-      createdAt: "2025-01-13T14:00:00Z",
-      updatedAt: "2025-01-13T14:00:00Z",
-    },
-  ]
+  const [loading, setLoading] = useState(true)
+  const [credits, setCredits] = useState<ImpactCredit[]>([])
+  const [search, setSearch] = useState("")
+  const [program, setProgram] = useState<"all" | "PNAE" | "PAA" | "OUTROS">("all")
+
+  useEffect(() => {
+    if (status === "loading") return
+    if (!session?.user || (session.user as any).role !== "EMPRESA") redirect("/auth/login")
+    fetchCredits()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session])
+
+  const fetchCredits = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/c/credits")
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar marketplace")
+      setCredits(json.data.credits || [])
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao carregar marketplace", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    return credits.filter((c) => {
+      if (program !== "all" && c.program !== program) return false
+      if (!s) return true
+      return (
+        c.farmerName.toLowerCase().includes(s) ||
+        c.institutionName.toLowerCase().includes(s) ||
+        c.unitType.toLowerCase().includes(s)
+      )
+    })
+  }, [credits, search, program])
+
+  const handleBuy = async (creditId: string) => {
+    try {
+      const res = await fetch(`/api/c/credits/${creditId}/buy`, { method: "POST" })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao comprar crédito")
+      toast({ title: "Compra concluída", description: "Crédito adquirido. Veja em Minhas Compras." })
+      await fetchCredits()
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao comprar crédito", variant: "destructive" })
+    }
+  }
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 md:py-8 space-y-8">
       <div className="space-y-3">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-secondary to-primary bg-clip-text text-transparent">
           Marketplace de Créditos de Impacto
@@ -112,9 +119,14 @@ export default async function MarketplacePage() {
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-            <Input placeholder="Buscar por agricultor ou instituição..." className="pl-10 h-11" />
+            <Input
+              placeholder="Buscar por agricultor ou instituição..."
+              className="pl-10 h-11"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <Select defaultValue="all">
+          <Select value={program} onValueChange={(v: any) => setProgram(v)}>
             <SelectTrigger className="w-full md:w-[200px] h-11">
               <SelectValue placeholder="Programa" />
             </SelectTrigger>
@@ -125,20 +137,31 @@ export default async function MarketplacePage() {
               <SelectItem value="OUTROS">Outros</SelectItem>
             </SelectContent>
           </Select>
-          <Select defaultValue="available">
+          <Select value="available" onValueChange={() => null}>
             <SelectTrigger className="w-full md:w-[200px] h-11">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="available">Disponível</SelectItem>
-              <SelectItem value="sold">Vendido</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </Card>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {credits.map((credit) => (
+        {loading ? (
+          <Card className="card-elevated p-6 md:col-span-2 lg:col-span-3 animate-pulse">
+            <div className="h-6 w-1/3 bg-muted rounded mb-4" />
+            <div className="h-24 bg-muted rounded" />
+          </Card>
+        ) : filtered.length === 0 ? (
+          <Card className="card-elevated p-10 md:col-span-2 lg:col-span-3 text-center">
+            <Award className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <div className="font-semibold">Nenhum crédito disponível</div>
+            <div className="text-sm text-muted-foreground mt-1">Peça para agricultores anunciarem créditos em “Meus Créditos”.</div>
+          </Card>
+        ) : (
+          filtered.map((credit) => (
           <Card key={credit.id} className="card-elevated hover:shadow-xl transition-all duration-300 group">
             <CardContent className="p-6 space-y-4">
               {/* Header com ícone e badge */}
@@ -202,13 +225,14 @@ export default async function MarketplacePage() {
                     Ver Lastro
                   </Link>
                 </Button>
-                <Button asChild size="sm" className="flex-1 bg-gradient-to-r from-primary to-secondary">
-                  <Link href={`/c/creditos/${credit.id}`}>Comprar</Link>
+                <Button size="sm" className="flex-1 bg-gradient-to-r from-primary to-secondary" onClick={() => handleBuy(credit.id)}>
+                  Comprar
                 </Button>
               </div>
             </CardContent>
           </Card>
-        ))}
+        ))
+        )}
       </div>
     </div>
   )
