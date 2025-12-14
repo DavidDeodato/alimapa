@@ -49,6 +49,19 @@ export interface Request {
   justification?: string
   createdAt: string
   updatedAt: string
+  evidence?: Array<{
+    id: string
+    scope: string
+    url: string
+    kind?: string
+    fileType?: string
+    resourceType?: string
+    originalName?: string
+    sizeBytes?: number
+    extractedText?: string
+    extractionStatus?: string
+    createdAt: string
+  }>
 }
 
 export interface Farmer {

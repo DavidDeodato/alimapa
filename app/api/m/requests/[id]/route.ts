@@ -12,7 +12,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const r = await prisma.request.findUnique({
     where: { id },
-    include: { institution: true, items: true, offers: { include: { farmer: true, items: true } } },
+    include: { institution: true, items: true, evidence: true, offers: { include: { farmer: true, items: true } } },
   })
   if (!r) return err("Requisição não encontrada", 404)
   if (r.municipalityId !== municipalityId) return err("Acesso negado", 403)
@@ -38,6 +38,19 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       justification: r.justification ?? undefined,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
+      evidence: (r.evidence || []).map((e) => ({
+        id: e.id,
+        scope: e.scope,
+        url: e.url,
+        kind: e.kind ?? undefined,
+        fileType: e.fileType ?? undefined,
+        resourceType: e.resourceType ?? undefined,
+        originalName: e.originalName ?? undefined,
+        sizeBytes: e.sizeBytes ?? undefined,
+        extractedText: e.extractedText ?? undefined,
+        extractionStatus: e.extractionStatus,
+        createdAt: e.createdAt.toISOString(),
+      })),
     },
     offers: r.offers.map((o) => ({
       id: o.id,

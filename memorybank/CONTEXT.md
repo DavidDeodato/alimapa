@@ -56,6 +56,8 @@ O seed cria usuários demo com senha padrão:
 ## Debug / Observações
 - `POST /api/auth/register`: quando o payload é inválido, a API retorna `details` com os erros do Zod (path/message) para facilitar ajuste de contrato.
 
+- **Deploy Vercel — pnpm lockfile**: a Vercel falha com `ERR_PNPM_OUTDATED_LOCKFILE` quando `pnpm-lock.yaml` não está sincronizado com `package.json` (ex.: deps adicionadas e lockfile não atualizado). Mitigação rápida no repo (sem mexer na Vercel): adicionar `.npmrc` com `frozen-lockfile=false` (e `prefer-frozen-lockfile=false`) para permitir `pnpm install` em CI mesmo com lockfile desatualizado.
+
 - **Next 16 (App Router) — params Promise**: rotas dinâmicas em `app/api/**/[id]/route.ts` podem receber `params` como **Promise**. Se o handler acessa `params.id` direto, o `id` vira `undefined` e o Prisma quebra (ex.: `GET /api/conversations/:id/messages`). Padronizar para:
   - `export async function GET(req, { params }: { params: Promise<{ id: string }> }) { const { id } = await params }`
   - Validar `id` e retornar 400 ao invés de 500.

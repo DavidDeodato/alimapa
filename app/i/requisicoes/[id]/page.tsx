@@ -93,6 +93,28 @@ export default function InstituicaoRequestDetailPage({ params }: { params: Promi
             </div>
           </Card>
 
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Provas e Documentos</h2>
+            {(request as any).evidence && Array.isArray((request as any).evidence) && (request as any).evidence.length ? (
+              <div className="space-y-3">
+                {(request as any).evidence.map((e: any) => (
+                  <a
+                    key={e.id}
+                    href={e.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block p-3 rounded border hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="text-sm font-medium">{e.originalName || e.scope}</div>
+                    <div className="text-xs text-muted-foreground truncate">{e.url}</div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhuma prova anexada.</p>
+            )}
+          </Card>
+
           {request.status === "FULFILLING" && (
             <Card className="p-6 bg-green-50 border-green-200">
               <h2 className="text-xl font-semibold mb-4">Ação Necessária</h2>

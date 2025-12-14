@@ -13,7 +13,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
 
   const r = await prisma.request.findUnique({
     where: { id },
-    include: { items: true },
+    include: { items: true, evidence: true },
   })
   if (!r) return err("Requisição não encontrada", 404)
   if (r.institutionId !== institution.id) return err("Acesso negado", 403)
@@ -39,6 +39,19 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
       justification: r.justification ?? undefined,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
+      evidence: (r.evidence || []).map((e) => ({
+        id: e.id,
+        scope: e.scope,
+        url: e.url,
+        kind: e.kind ?? undefined,
+        fileType: e.fileType ?? undefined,
+        resourceType: e.resourceType ?? undefined,
+        originalName: e.originalName ?? undefined,
+        sizeBytes: e.sizeBytes ?? undefined,
+        extractedText: e.extractedText ?? undefined,
+        extractionStatus: e.extractionStatus,
+        createdAt: e.createdAt.toISOString(),
+      })),
     },
   })
 }

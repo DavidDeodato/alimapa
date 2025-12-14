@@ -21,6 +21,19 @@ export default function NovaRequisicaoPage() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [mapKey, setMapKey] = useState(0)
+  const [requestId, setRequestId] = useState<string>("")
+  const [evidence, setEvidence] = useState<
+    Array<{
+      id: string
+      scope: string
+      url: string
+      originalName?: string
+      resourceType?: string
+      fileType?: string
+      createdAt: string
+    }>
+  >([])
+  const [uploading, setUploading] = useState(false)
 
   const [formData, setFormData] = useState({
     program: "PNAE",
@@ -78,7 +91,7 @@ export default function NovaRequisicaoPage() {
     }
   }
 
-  const handleSubmit = async (isDraft: boolean) => {
+  const createOrUpdateDraft = async () => {
     const normalizedItems = formData.items
       .map((i) => ({
         productName: i.productName.trim(),
@@ -86,15 +99,6 @@ export default function NovaRequisicaoPage() {
         unit: i.unit,
       }))
       .filter((i) => i.productName && Number.isFinite(i.quantity) && i.quantity > 0)
-
-    if (!isDraft && normalizedItems.length === 0) {
-      toast({
-        title: "Itens obrigatórios",
-        description: "Adicione pelo menos 1 item (produto e quantidade) antes de enviar.",
-        variant: "destructive",
-      })
-      return
-    }
 
     setLoading(true)
     try {
@@ -108,7 +112,7 @@ export default function NovaRequisicaoPage() {
         lat: formData.lat,
         lng: formData.lng,
         items: normalizedItems,
-        isDraft,
+        isDraft: true,
       }
 
       const res = await fetch("/api/i/requests", {
@@ -119,13 +123,92 @@ export default function NovaRequisicaoPage() {
       const json = await res.json()
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar requisição")
 
-      toast({
-        title: isDraft ? "Rascunho salvo" : "Requisição enviada",
-        description: isDraft ? "Você pode editar e enviar depois." : "O gestor municipal poderá validar e orquestrar.",
-      })
-      router.push("/i/requisicoes")
+      const createdId = json.data.request.id as string
+      setRequestId(createdId)
+      toast({ title: "Rascunho criado", description: "Agora você pode anexar provas." })
+      return createdId
     } catch (error: any) {
       toast({ title: "Erro", description: error?.message || "Ocorreu um erro. Tente novamente.", variant: "destructive" })
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const uploadEvidence = async (file: File, scope: "REQUEST_PROOF" | "REQUEST_DOCUMENT") => {
+    if (!requestId) return
+    setUploading(true)
+    try {
+      const resourceType = file.type.startsWith("image/") ? "image" : "raw"
+      const signRes = await fetch("/api/uploads/cloudinary/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose: "evidence", resourceType, scope, requestId }),
+      })
+      const signJson = await signRes.json().catch(() => null)
+      if (!signRes.ok || !signJson?.ok) throw new Error(signJson?.error || "Falha ao preparar upload")
+
+      const { cloudName, apiKey, timestamp, signature, folder } = signJson.data
+      const form = new FormData()
+      form.append("file", file)
+      form.append("api_key", apiKey)
+      form.append("timestamp", String(timestamp))
+      form.append("signature", signature)
+      form.append("folder", folder)
+
+      const upRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, { method: "POST", body: form })
+      const upJson = await upRes.json()
+      if (!upRes.ok) throw new Error(upJson?.error?.message || "Falha no upload")
+
+      const saveRes = await fetch(`/api/i/requests/${requestId}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope,
+          url: upJson.secure_url,
+          publicId: upJson.public_id,
+          resourceType,
+          fileType: file.type || undefined,
+          originalName: file.name || undefined,
+          sizeBytes: file.size || undefined,
+        }),
+      })
+      const saveJson = await saveRes.json().catch(() => null)
+      if (!saveRes.ok || !saveJson?.ok) throw new Error(saveJson?.error || "Falha ao anexar prova")
+
+      setEvidence((prev) => [saveJson.data.evidence, ...prev])
+      toast({ title: "Prova anexada" })
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível anexar a prova.", variant: "destructive" })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeEvidence = async (evidenceId: string) => {
+    if (!requestId) return
+    try {
+      const res = await fetch(`/api/i/requests/${requestId}/evidence/${evidenceId}`, { method: "DELETE" })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao remover")
+      setEvidence((prev) => prev.filter((e) => e.id !== evidenceId))
+      toast({ title: "Prova removida" })
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível remover.", variant: "destructive" })
+    }
+  }
+
+  const submitRequest = async () => {
+    if (!requestId) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/i/requests/${requestId}/submit`, { method: "POST" })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao enviar requisição")
+      toast({ title: "Requisição enviada", description: "O gestor municipal poderá validar e orquestrar." })
+      router.push("/i/requisicoes")
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao enviar", variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -138,7 +221,7 @@ export default function NovaRequisicaoPage() {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             Nova Requisição
           </h1>
-          <p className="text-muted-foreground mt-1">Passo {step} de 3</p>
+          <p className="text-muted-foreground mt-1">Passo {step} de 4</p>
         </div>
 
         <Card className="p-6 shadow-lg">
@@ -289,7 +372,7 @@ export default function NovaRequisicaoPage() {
                 </Button>
               </div>
             </div>
-          ) : (
+          ) : step === 3 ? (
             <div className="space-y-6">
               <h2 className="text-xl font-semibold flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
@@ -334,13 +417,96 @@ export default function NovaRequisicaoPage() {
                   Voltar
                 </Button>
                 <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => handleSubmit(true)} disabled={loading}>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      const id = requestId || (await createOrUpdateDraft())
+                      if (id) router.push("/i/requisicoes")
+                    }}
+                    disabled={loading}
+                  >
                     Salvar Rascunho
                   </Button>
-                  <Button onClick={() => handleSubmit(false)} disabled={loading}>
-                    {loading ? "Enviando..." : "Enviar Requisição"}
+                  <Button
+                    onClick={async () => {
+                      const id = requestId || (await createOrUpdateDraft())
+                      if (id) setStep(4)
+                    }}
+                    disabled={loading}
+                  >
+                    Próximo (Provas)
                   </Button>
                 </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold">Provas e Documentos</h2>
+              <p className="text-sm text-muted-foreground">
+                Anexe pelo menos 1 prova (foto do local ou documento) para enviar a requisição.
+              </p>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Fotos do local (interno/externo)</Label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="block w-full text-sm"
+                    disabled={uploading || loading || !requestId}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) void uploadEvidence(f, "REQUEST_PROOF")
+                      e.currentTarget.value = ""
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Documentos (PDF)</Label>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="block w-full text-sm"
+                    disabled={uploading || loading || !requestId}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) void uploadEvidence(f, "REQUEST_DOCUMENT")
+                      e.currentTarget.value = ""
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">Dica: se o documento for foto, pode enviar como imagem.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-sm font-medium">Anexos ({evidence.length})</div>
+                {evidence.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">Nenhuma prova anexada ainda.</div>
+                ) : (
+                  <div className="grid gap-2">
+                    {evidence.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between p-3 rounded border bg-muted/30">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{e.originalName || e.scope}</div>
+                          <div className="text-xs text-muted-foreground truncate">{e.url}</div>
+                        </div>
+                        <Button variant="outline" className="bg-transparent" onClick={() => removeEvidence(e.id)}>
+                          Remover
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 justify-between">
+                <Button variant="outline" onClick={() => setStep(3)} disabled={loading || uploading}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Voltar
+                </Button>
+                <Button onClick={submitRequest} disabled={loading || uploading || !requestId}>
+                  {loading ? "Enviando..." : "Enviar Requisição"}
+                </Button>
               </div>
             </div>
           )}

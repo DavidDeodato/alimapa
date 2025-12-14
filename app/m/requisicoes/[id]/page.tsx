@@ -299,6 +299,29 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </Card>
 
+          {/* Provas e documentos */}
+          <Card className="p-6">
+            <h2 className="text-xl font-semibold mb-4">Provas e Documentos</h2>
+            {((request as any)?.evidence && Array.isArray((request as any).evidence) && (request as any).evidence.length) ? (
+              <div className="space-y-3">
+                {(request as any).evidence.map((e: any) => (
+                  <a
+                    key={e.id}
+                    href={e.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block p-3 rounded border hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="text-sm font-medium">{e.originalName || e.scope}</div>
+                    <div className="text-xs text-muted-foreground truncate">{e.url}</div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Nenhuma prova anexada.</p>
+            )}
+          </Card>
+
           {/* Ações condicionais */}
           {canValidate && (
             <Card className="p-6 bg-blue-50 border-blue-200">
