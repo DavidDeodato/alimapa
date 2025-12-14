@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "leaflet/dist/leaflet.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -135,6 +136,29 @@
   font-family: var(--font-sans);
   z-index: 0;
   border-radius: var(--radius);
+}
+
+.pulse-marker {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 rgba(13, 74, 52, 0.6);
+  animation: pulse 1.6s infinite;
+  border: 2px solid white;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(13, 74, 52, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(13, 74, 52, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 74, 52, 0);
+  }
 }
 
 .leaflet-popup-content-wrapper {

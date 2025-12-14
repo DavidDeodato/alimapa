@@ -1,53 +1,70 @@
 "use client"
 
 import { use } from "react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Send, ArrowLeft, Check, X } from "lucide-react"
 import Link from "next/link"
+import type { ChatMessage } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
 
 export default function ChatPage({ params }: { params: Promise<{ id: string }> }) {
+  const { toast } = useToast()
   const { id } = use(params)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
   const [message, setMessage] = useState("")
-  const [messages, setMessages] = useState([
-    {
-      id: "1",
-      role: "assistant" as const,
-      content:
-        "Olá! Sou o agente da Alimapa. Estou aqui para ajudá-lo com esta proposta. Posso esclarecer dúvidas sobre capacidade de produção, prazos e documentação necessária. Como posso ajudar?",
-      timestamp: new Date().toISOString(),
-    },
-  ])
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
 
-  const handleSend = () => {
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  const load = async () => {
+    try {
+      const convRes = await fetch(`/api/offers/${id}/conversation`)
+      const convJson = await convRes.json()
+      if (!convRes.ok || !convJson?.ok) throw new Error(convJson?.error || "Falha ao carregar conversa")
+      const convId = convJson.data.conversationId as string
+      setConversationId(convId)
+
+      const msgRes = await fetch(`/api/conversations/${convId}/messages`)
+      const msgJson = await msgRes.json()
+      if (!msgRes.ok || !msgJson?.ok) throw new Error(msgJson?.error || "Falha ao carregar mensagens")
+      setMessages(msgJson.data.messages || [])
+      await fetch(`/api/conversations/${convId}/read`, { method: "POST" }).catch(() => null)
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível carregar o chat.", variant: "destructive" })
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  const handleSend = async () => {
     if (!message.trim()) return
-
-    setMessages([
-      ...messages,
-      {
-        id: String(messages.length + 1),
-        role: "user" as const,
-        content: message,
-        timestamp: new Date().toISOString(),
-      },
-    ])
+    if (!conversationId) return
+    const content = message
     setMessage("")
-
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: String(prev.length + 1),
-          role: "assistant" as const,
-          content: "Entendo sua dúvida. Vou verificar essas informações para você...",
-          timestamp: new Date().toISOString(),
-        },
-      ])
-    }, 1000)
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao enviar")
+      setMessages((prev) => [...prev, json.data.message])
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível enviar a mensagem.", variant: "destructive" })
+    }
   }
 
   return (
@@ -89,6 +106,7 @@ export default function ChatPage({ params }: { params: Promise<{ id: string }> }
               </div>
             </div>
           ))}
+          <div ref={messagesEndRef} />
         </div>
 
         <div className="p-6 border-t">

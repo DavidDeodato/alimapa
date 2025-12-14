@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -9,25 +9,12 @@ import { Badge } from "@/components/ui/badge"
 import { Bot, User, Send } from "lucide-react"
 import type { ChatMessage } from "@/lib/types"
 import { cn } from "@/lib/utils"
-
-const mockMessages: ChatMessage[] = [
-  {
-    id: "1",
-    role: "assistant",
-    content: "Olá! Sou o assistente da Alimapa. Temos novas oportunidades de venda para você!",
-    timestamp: "2025-01-14T10:00:00Z",
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content:
-      "A Escola Municipal João Paulo II está precisando de 50kg de alface. O valor de mercado é R$ 5/kg. Pelo programa PNAE, podemos oferecer R$ 4,25/kg. Você tem interesse?",
-    timestamp: "2025-01-14T10:01:00Z",
-  },
-]
+import { useToast } from "@/hooks/use-toast"
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>(mockMessages)
+  const { toast } = useToast()
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [message, setMessage] = useState("")
   const [hasUnread, setHasUnread] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -40,8 +27,47 @@ export default function ChatPage() {
     scrollToBottom()
   }, [messages])
 
-  const handleSend = () => {
+  const load = async () => {
+    try {
+      const res = await fetch("/api/conversations")
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar conversas")
+      const list = json.data.conversations || []
+      if (!list.length) {
+        setMessages([
+          {
+            id: "empty",
+            role: "assistant",
+            content: "Ainda não há conversas. Você receberá mensagens quando o gestor enviar propostas.",
+            timestamp: new Date().toISOString(),
+          },
+        ])
+        setHasUnread(false)
+        return
+      }
+
+      const convId = list[0].id as string
+      setConversationId(convId)
+
+      const msgRes = await fetch(`/api/conversations/${convId}/messages`)
+      const msgJson = await msgRes.json()
+      if (!msgRes.ok || !msgJson?.ok) throw new Error(msgJson?.error || "Falha ao carregar mensagens")
+      setMessages(msgJson.data.messages || [])
+      setHasUnread(list[0].unreadCount > 0)
+      await fetch(`/api/conversations/${convId}/read`, { method: "POST" }).catch(() => null)
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível carregar o chat.", variant: "destructive" })
+    }
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSend = async () => {
     if (!message.trim()) return
+    if (!conversationId) return
 
     const newMessage: ChatMessage = {
       id: String(Date.now()),
@@ -53,17 +79,19 @@ export default function ChatPage() {
     setMessages([...messages, newMessage])
     setMessage("")
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: ChatMessage = {
-        id: String(Date.now() + 1),
-        role: "assistant",
-        content: "Ótimo! Vou registrar seu interesse. Em breve você receberá os detalhes da entrega.",
-        timestamp: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, aiResponse])
-      setHasUnread(true)
-    }, 1500)
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newMessage.content }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao enviar")
+      // mensagem já foi adicionada localmente; só atualiza lista/conversa
+      setHasUnread(false)
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível enviar a mensagem.", variant: "destructive" })
+    }
   }
 
   return (

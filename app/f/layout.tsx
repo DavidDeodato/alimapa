@@ -6,7 +6,7 @@ import { AuthLayout } from "@/components/auth-layout"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, User, FolderOpen, Store, MessageCircle } from "lucide-react"
+import { FileText, FolderOpen, Store, MessageCircle } from "lucide-react"
 
 export default async function AgricultorLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions)
@@ -17,7 +17,6 @@ export default async function AgricultorLayout({ children }: { children: React.R
     { href: "/f/propostas", icon: FileText, label: "Propostas", badge: 0 },
     { href: "/f/chat", icon: MessageCircle, label: "Chat", badge: unreadCount },
     { href: "/f/meus-creditos", icon: Store, label: "Meus Créditos", badge: 0 },
-    { href: "/f/perfil", icon: User, label: "Perfil", badge: 0 },
     { href: "/f/documentos", icon: FolderOpen, label: "Documentos", badge: 0 },
   ]
 

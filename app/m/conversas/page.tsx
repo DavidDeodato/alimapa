@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -9,51 +9,89 @@ import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar } from "@/components/ui/avatar"
 import { Search, Bot, User, Send, Pause } from "lucide-react"
-import type { Conversation } from "@/lib/types"
+import type { ChatMessage } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 
-const mockConversations: Conversation[] = [
-  {
-    id: "1",
-    farmerId: "f1",
-    farmerName: "João Silva",
-    agentConfigId: "a1",
-    messages: [
-      {
-        id: "m1",
-        role: "assistant",
-        content: "Olá João! Temos uma nova requisição de alface. Você tem interesse?",
-        timestamp: "2025-01-14T10:00:00Z",
-      },
-      {
-        id: "m2",
-        role: "user",
-        content: "Sim, tenho interesse! Qual a quantidade?",
-        timestamp: "2025-01-14T10:05:00Z",
-      },
-      {
-        id: "m3",
-        role: "assistant",
-        content: "São 50kg de alface. O valor de mercado é R$ 5/kg. Posso oferecer R$ 4,25/kg pelo programa PNAE.",
-        timestamp: "2025-01-14T10:06:00Z",
-      },
-    ],
-    status: "ACTIVE",
-    unreadCount: 1,
-    lastMessageAt: "2025-01-14T10:06:00Z",
-    createdAt: "2025-01-14T10:00:00Z",
-  },
-]
+type ConversationListItem = {
+  id: string
+  offerId: string
+  farmerId: string
+  farmerName: string
+  status: "ACTIVE" | "PAUSED" | "COMPLETED"
+  unreadCount: number
+  lastMessageAt: string
+  lastMessagePreview: string
+}
 
 export default function ConversasPage() {
-  const [selectedConv, setSelectedConv] = useState<Conversation | null>(mockConversations[0])
+  const { toast } = useToast()
+  const [conversations, setConversations] = useState<ConversationListItem[]>([])
+  const [selectedConv, setSelectedConv] = useState<ConversationListItem | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [message, setMessage] = useState("")
   const [search, setSearch] = useState("")
 
-  const handleSendMessage = () => {
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    if (!s) return conversations
+    return conversations.filter((c) => c.farmerName.toLowerCase().includes(s) || c.lastMessagePreview.toLowerCase().includes(s))
+  }, [conversations, search])
+
+  const loadConversations = async () => {
+    try {
+      const res = await fetch("/api/conversations")
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar conversas")
+      const list: ConversationListItem[] = json.data.conversations || []
+      setConversations(list)
+      if (!selectedConv && list.length) setSelectedConv(list[0])
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível carregar as conversas.", variant: "destructive" })
+    }
+  }
+
+  const loadMessages = async (conversationId: string) => {
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/messages`)
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar mensagens")
+      setMessages(json.data.messages || [])
+      await fetch(`/api/conversations/${conversationId}/read`, { method: "POST" }).catch(() => null)
+      await loadConversations()
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível carregar as mensagens.", variant: "destructive" })
+    }
+  }
+
+  useEffect(() => {
+    loadConversations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (selectedConv?.id) void loadMessages(selectedConv.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConv?.id])
+
+  const handleSendMessage = async () => {
     if (!message.trim()) return
-    // Send message logic here
+    if (!selectedConv) return
+    const content = message
     setMessage("")
+    try {
+      const res = await fetch(`/api/conversations/${selectedConv.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao enviar mensagem")
+      setMessages((prev) => [...prev, json.data.message])
+      await loadConversations()
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível enviar a mensagem.", variant: "destructive" })
+    }
   }
 
   return (
@@ -75,7 +113,7 @@ export default function ConversasPage() {
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">
-              {mockConversations.map((conv) => (
+              {filtered.map((conv) => (
                 <button
                   key={conv.id}
                   onClick={() => setSelectedConv(conv)}
@@ -95,7 +133,7 @@ export default function ConversasPage() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground truncate mt-1">
-                        {conv.messages[conv.messages.length - 1]?.content}
+                        {conv.lastMessagePreview}
                       </p>
                     </div>
                     <Badge variant={conv.status === "ACTIVE" ? "default" : "secondary"} className="text-xs">
@@ -134,7 +172,7 @@ export default function ConversasPage() {
 
             <ScrollArea className="flex-1 p-6">
               <div className="space-y-4">
-                {selectedConv.messages.map((msg) => (
+                {messages.map((msg) => (
                   <div key={msg.id} className={cn("flex gap-3", msg.role === "user" ? "flex-row-reverse" : "")}>
                     <Avatar
                       className={cn(
