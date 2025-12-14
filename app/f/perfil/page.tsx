@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useSession } from "next-auth/react"
 
 export default function PerfilPage() {
   const { toast } = useToast()
+  const { update } = useSession()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [me, setMe] = useState<any>(null)
@@ -96,6 +98,7 @@ export default function PerfilPage() {
       if (!saveRes.ok || !saveJson?.ok) throw new Error(saveJson?.error || "Falha ao salvar foto")
 
       toast({ title: "Foto atualizada", description: "Sua foto de perfil foi atualizada." })
+      await update({ avatarUrl: upJson.secure_url })
       await load()
     } catch (e: any) {
       toast({ title: "Erro no upload", description: e?.message || "Não foi possível enviar a imagem.", variant: "destructive" })
@@ -143,6 +146,7 @@ export default function PerfilPage() {
       const json = await res.json()
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar")
       toast({ title: "Perfil atualizado", description: "Alterações salvas com sucesso." })
+      await update({ name: formData.displayName })
       await load()
     } catch (error: any) {
       toast({ title: "Erro", description: error?.message || "Ocorreu um erro. Tente novamente.", variant: "destructive" })
@@ -206,6 +210,7 @@ export default function PerfilPage() {
                       return
                     }
                     toast({ title: "Foto removida" })
+                    await update({ avatarUrl: null })
                     await load()
                   }}
                 >

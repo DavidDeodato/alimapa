@@ -40,11 +40,18 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.role = (user as any).role
         token.municipalityId = (user as any).municipalityId
         token.avatarUrl = (user as any).avatarUrl ?? null
+        token.name = (user as any).name ?? token.name
+      }
+      if (trigger === "update" && session) {
+        // permite atualizar dados "ao vivo" (ex: avatar/nome) sem relogar
+        const anySession: any = session
+        if (anySession?.avatarUrl !== undefined) token.avatarUrl = anySession.avatarUrl
+        if (anySession?.name !== undefined) token.name = anySession.name
       }
       return token
     },

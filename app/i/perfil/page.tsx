@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { useSession } from "next-auth/react"
 
 type MeResponse = {
   ok: true
@@ -34,6 +35,7 @@ type MeResponse = {
 
 export default function InstituicaoPerfilPage() {
   const { toast } = useToast()
+  const { update } = useSession()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [me, setMe] = useState<MeResponse["data"] | null>(null)
@@ -106,6 +108,7 @@ export default function InstituicaoPerfilPage() {
       if (!saveRes.ok || !saveJson?.ok) throw new Error(saveJson?.error || "Falha ao salvar foto")
 
       toast({ title: "Foto atualizada", description: "Sua foto de perfil foi atualizada." })
+      await update({ avatarUrl: upJson.secure_url })
       await load()
     } catch (e: any) {
       toast({ title: "Erro no upload", description: e?.message || "Não foi possível enviar a imagem.", variant: "destructive" })
@@ -130,6 +133,7 @@ export default function InstituicaoPerfilPage() {
       const json = await res.json()
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar")
       toast({ title: "Perfil atualizado", description: "Alterações salvas com sucesso." })
+      await update({ name: displayName })
       await load()
     } catch (e: any) {
       toast({ title: "Erro", description: e?.message || "Não foi possível salvar.", variant: "destructive" })
@@ -192,6 +196,7 @@ export default function InstituicaoPerfilPage() {
                     return
                   }
                   toast({ title: "Foto removida" })
+                  await update({ avatarUrl: null })
                   await load()
                 }}
               >

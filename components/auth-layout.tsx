@@ -10,7 +10,7 @@ import { getRoleLabel } from "@/lib/role-utils"
 import type { UserRole } from "@/lib/types"
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { signOut } from "next-auth/react"
+import { signOut, useSession } from "next-auth/react"
 import { useToast } from "@/hooks/use-toast"
 
 interface AuthLayoutProps {
@@ -32,12 +32,16 @@ export function AuthLayout({
   isCollapsed: controlledCollapsed,
   onCollapsedChange,
 }: AuthLayoutProps) {
+  const { data: session } = useSession()
   const [internalCollapsed, setInternalCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const { toast } = useToast()
 
   const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed
   const setIsCollapsed = onCollapsedChange || setInternalCollapsed
+
+  const effectiveName = session?.user?.name ?? userName ?? null
+  const effectiveAvatarUrl = ((session?.user as any)?.avatarUrl as string | null | undefined) ?? avatarUrl ?? null
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -138,15 +142,15 @@ export function AuthLayout({
                 className="flex items-center gap-2"
               >
                 <div className="h-9 w-9 rounded-full overflow-hidden bg-muted flex items-center justify-center border">
-                  {avatarUrl ? (
+                  {effectiveAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="Foto do perfil" className="h-full w-full object-cover" />
+                    <img src={effectiveAvatarUrl} alt="Foto do perfil" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-sm font-semibold text-muted-foreground">{(userName || "U")[0]}</span>
+                    <span className="text-sm font-semibold text-muted-foreground">{(effectiveName || "U")[0]}</span>
                   )}
                 </div>
                 <div className="hidden sm:block">
-                  <div className="text-sm font-medium leading-tight">{userName || "Meu perfil"}</div>
+                  <div className="text-sm font-medium leading-tight">{effectiveName || "Meu perfil"}</div>
                   <div className="text-xs text-muted-foreground leading-tight">Ver perfil</div>
                 </div>
               </Link>
