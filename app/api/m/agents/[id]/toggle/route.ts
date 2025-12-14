@@ -1,6 +1,7 @@
 import { ok, err } from "@/lib/api-response"
 import { prisma } from "@/lib/db"
 import { requireRole } from "@/lib/auth-server"
+import { auditLog } from "@/lib/audit"
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -20,13 +21,11 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     data: { isActive: !existing.isActive },
   })
 
-  await prisma.auditLog.create({
-    data: {
-      actorUserId: auth.user.id,
-      action: updated.isActive ? "agent_config.resumed" : "agent_config.paused",
-      entityType: "AgentConfig",
-      entityId: updated.id,
-    },
+  await auditLog({
+    actorUserId: auth.user.id,
+    action: updated.isActive ? "agent_config.resumed" : "agent_config.paused",
+    entityType: "AgentConfig",
+    entityId: updated.id,
   })
 
   return ok({ id: updated.id, isActive: updated.isActive })

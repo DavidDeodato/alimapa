@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db"
 import { haversineKm } from "@/lib/geo"
 import { geminiGenerateText } from "@/lib/gemini"
+import { auditLog } from "@/lib/audit"
 
 const MARKET_PRICE: Record<string, number> = {
   Alface: 5,
@@ -102,14 +103,12 @@ export async function orchestrateRequest(params: {
       where: { id: request.id },
       data: { status: "NEEDS_REVIEW" },
     })
-    await prisma.auditLog.create({
-      data: {
-        actorUserId: params.startedByUserId,
-        action: "request.orchestrate_failed",
-        entityType: "Request",
-        entityId: request.id,
-        details: { reason: "Nenhum agricultor compatível encontrado" },
-      },
+    await auditLog({
+      actorUserId: params.startedByUserId,
+      action: "request.orchestrate_failed",
+      entityType: "Request",
+      entityId: request.id,
+      details: { reason: "Nenhum agricultor compatível encontrado" },
     })
     return { offers: [], explainability: { candidates: [] } }
   }
@@ -222,14 +221,12 @@ export async function orchestrateRequest(params: {
     data: { status: "PROPOSALS_SENT" },
   })
 
-  await prisma.auditLog.create({
-    data: {
-      actorUserId: params.startedByUserId,
-      action: "request.orchestrated",
-      entityType: "Request",
-      entityId: request.id,
-      details: { runId: run.id, offersCreated: offers.map((o) => o.id), explainability },
-    },
+  await auditLog({
+    actorUserId: params.startedByUserId,
+    action: "request.orchestrated",
+    entityType: "Request",
+    entityId: request.id,
+    details: { runId: run.id, offersCreated: offers.map((o) => o.id), explainability },
   })
 
   return { offers, explainability, runId: run.id }

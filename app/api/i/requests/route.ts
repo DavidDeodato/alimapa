@@ -2,6 +2,7 @@ import { z } from "zod"
 import { ok, err } from "@/lib/api-response"
 import { prisma } from "@/lib/db"
 import { requireRole } from "@/lib/auth-server"
+import { auditLog } from "@/lib/audit"
 
 const CreateSchema = z.object({
   program: z.enum(["PNAE", "PAA", "OUTROS"]),
@@ -120,14 +121,12 @@ export async function POST(req: Request) {
     include: { items: true },
   })
 
-  await prisma.auditLog.create({
-    data: {
-      actorUserId: auth.user.id,
-      action: status === "DRAFT" ? "request.draft_created" : "request.submitted",
-      entityType: "Request",
-      entityId: created.id,
-      details: { institutionId: institution.id },
-    },
+  await auditLog({
+    actorUserId: auth.user.id,
+    action: status === "DRAFT" ? "request.draft_created" : "request.submitted",
+    entityType: "Request",
+    entityId: created.id,
+    details: { institutionId: institution.id },
   })
 
   return ok({

@@ -2,6 +2,7 @@ import { z } from "zod"
 import { ok, err } from "@/lib/api-response"
 import { prisma } from "@/lib/db"
 import { requireRole } from "@/lib/auth-server"
+import { auditLog } from "@/lib/audit"
 
 const UpsertSchema = z.object({
   farmerId: z.string().optional().nullable(), // "__DEFAULT__" ou null => default municipal
@@ -107,14 +108,12 @@ export async function POST(req: Request) {
         },
       })
 
-  await prisma.auditLog.create({
-    data: {
-      actorUserId: auth.user.id,
-      action: "agent_config.upserted",
-      entityType: "AgentConfig",
-      entityId: saved.id,
-      details: { farmerId: farmerId ?? null },
-    },
+  await auditLog({
+    actorUserId: auth.user.id,
+    action: "agent_config.upserted",
+    entityType: "AgentConfig",
+    entityId: saved.id,
+    details: { farmerId: farmerId ?? null },
   })
 
   return ok({

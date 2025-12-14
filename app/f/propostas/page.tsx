@@ -1,47 +1,51 @@
-import { redirect } from "next/navigation"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
+"use client"
+
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { DollarSign, MapPin, Package, Calendar, TrendingDown } from "lucide-react"
 import type { Offer } from "@/lib/types"
 import { EmptyState } from "@/components/empty-state"
+import { useToast } from "@/hooks/use-toast"
 
-export default async function PropostasPage() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || (session.user as any).role !== "AGRICULTOR") redirect("/auth/login")
+function statusLabel(status: string) {
+  if (status === "SENT") return "Aguardando Resposta"
+  if (status === "ACCEPTED") return "Aceita"
+  if (status === "DECLINED") return "Recusada"
+  if (status === "APPROVED") return "Aprovada"
+  if (status === "REJECTED") return "Rejeitada"
+  return status
+}
 
-  const offers: Offer[] = [
-    {
-      id: "off-001",
-      requestId: "req-001",
-      farmerId: "farm-001",
-      farmerName: "João da Silva",
-      status: "SENT",
-      items: [
-        { id: "1", productName: "Alface", quantity: 50, unit: "kg" },
-        { id: "2", productName: "Tomate", quantity: 30, unit: "kg" },
-      ],
-      proposedValue: 450,
-      marketValue: 600,
-      distance: 8.5,
-      createdAt: "2025-01-11T10:00:00Z",
-    },
-    {
-      id: "off-002",
-      requestId: "req-002",
-      farmerId: "farm-001",
-      farmerName: "João da Silva",
-      status: "APPROVED",
-      items: [{ id: "3", productName: "Banana", quantity: 100, unit: "kg" }],
-      proposedValue: 300,
-      marketValue: 450,
-      distance: 12.0,
-      createdAt: "2025-01-08T14:00:00Z",
-    },
-  ]
+export default function PropostasPage() {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [offers, setOffers] = useState<Offer[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      try {
+        const res = await fetch("/api/f/offers")
+        const json = await res.json().catch(() => null)
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar propostas")
+        if (!cancelled) setOffers(json.data.offers || [])
+      } catch (e: any) {
+        toast({ title: "Erro", description: e?.message || "Falha ao carregar propostas", variant: "destructive" })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [toast])
+
+  const visible = useMemo(() => offers, [offers])
 
   return (
     <div className="p-8 space-y-8">
@@ -55,7 +59,18 @@ export default async function PropostasPage() {
         </p>
       </div>
 
-      {offers.length === 0 ? (
+      {loading ? (
+        <div className="grid gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="card-elevated animate-pulse">
+              <CardContent className="p-6">
+                <div className="h-6 w-1/3 bg-muted rounded mb-4" />
+                <div className="h-20 bg-muted rounded" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
         <EmptyState
           icon={Package}
           title="Nenhuma proposta disponível"
@@ -63,7 +78,7 @@ export default async function PropostasPage() {
         />
       ) : (
         <div className="grid gap-6">
-          {offers.map((offer) => (
+          {visible.map((offer) => (
             <Card key={offer.id} className="card-elevated hover:shadow-xl transition-all duration-300">
               <CardContent className="p-6">
                 <div className="flex flex-col lg:flex-row gap-6">
@@ -83,7 +98,7 @@ export default async function PropostasPage() {
                               : "bg-primary/10 text-primary border-primary/20"
                           }
                         >
-                          {offer.status === "SENT" ? "Aguardando Resposta" : "Aprovada"}
+                          {statusLabel(offer.status)}
                         </Badge>
                       </div>
                     </div>
@@ -103,14 +118,14 @@ export default async function PropostasPage() {
                         </div>
                       </div>
 
-                      {offer.marketValue && (
+                      {offer.marketValue != null && offer.proposedValue != null && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <TrendingDown className="h-4 w-4" />
                             <span>Créditos de Impacto</span>
                           </div>
                           <div className="text-2xl font-bold text-accent">
-                            {offer.marketValue - offer.proposedValue} créditos
+                            {(offer.marketValue - offer.proposedValue).toFixed(0)} créditos
                           </div>
                           <div className="text-xs text-muted-foreground">
                             (Diferença do valor de mercado: R$ {offer.marketValue})
@@ -124,7 +139,7 @@ export default async function PropostasPage() {
                       <div className="flex items-center gap-2 text-sm">
                         <MapPin className="h-4 w-4 text-muted-foreground" />
                         <span className="text-muted-foreground">Distância:</span>
-                        <span className="font-semibold">{offer.distance} km</span>
+                        <span className="font-semibold">{offer.distance ?? "-"} km</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm">
                         <Calendar className="h-4 w-4 text-muted-foreground" />

@@ -66,4 +66,9 @@ O seed cria usuários demo com senha padrão:
   - `GET /api/m/farmers/:id` (detalhe)
   - UI `/m/agricultores` e `/m/agricultores/:id` agora consomem API (sem dados mockados).
 
+- Auditoria (Gestor): desmock + API real
+  - `GET /api/m/audit` (paginação via cursor + filtro por `actionPrefix`)
+  - UI `/m/auditoria` agora lista logs reais
+  - Helper `lib/audit.ts` centraliza escrita de logs sem quebrar o fluxo principal.
+
 
