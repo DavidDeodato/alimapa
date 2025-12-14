@@ -10,6 +10,8 @@ import { getRoleLabel } from "@/lib/role-utils"
 import type { UserRole } from "@/lib/types"
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { signOut } from "next-auth/react"
+import { useToast } from "@/hooks/use-toast"
 
 interface AuthLayoutProps {
   children: React.ReactNode
@@ -28,6 +30,7 @@ export function AuthLayout({
 }: AuthLayoutProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
+  const { toast } = useToast()
 
   const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed
   const setIsCollapsed = onCollapsedChange || setInternalCollapsed
@@ -50,12 +53,12 @@ export function AuthLayout({
           )}
         >
           {!isCollapsed && (
-            <Link href="/demo" className="flex items-center gap-3 flex-shrink-0">
+            <Link href="/" className="flex items-center gap-3 flex-shrink-0">
               <Image src="/alimap.png" alt="Alimapa" width={140} height={36} className="h-9 w-auto" />
             </Link>
           )}
           {isCollapsed && (
-            <Link href="/demo" className="flex items-center justify-center">
+            <Link href="/" className="flex items-center justify-center">
               <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-lg">
                 A
               </div>
@@ -123,11 +126,17 @@ export function AuthLayout({
                 </Badge>
               </div>
             </div>
-            <Link href="/demo">
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-                Trocar perfil
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 bg-transparent"
+              onClick={async () => {
+                toast({ title: "Saindo...", description: "Encerrando sua sessão." })
+                await signOut({ callbackUrl: "/auth/login" })
+              }}
+            >
+              Sair
+            </Button>
           </div>
         </header>
 

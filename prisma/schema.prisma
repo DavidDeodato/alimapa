@@ -92,6 +92,8 @@ model User {
   passwordHash   String?
   role           UserRole
   displayName    String
+  avatarUrl      String?
+  avatarPublicId String?
   municipalityId String?
   municipality   Municipality? @relation(fields: [municipalityId], references: [id])
 
@@ -142,6 +144,7 @@ model Institution {
   lat     Float?
   lng     Float?
   address String?
+  phone   String?
 
   requests Request[]
   credits  ImpactCredit[]

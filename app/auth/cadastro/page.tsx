@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { UserRole } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
 
 type RegisterPayload =
   | {
@@ -54,6 +55,7 @@ type RegisterPayload =
 
 export default function CadastroPage() {
   const router = useRouter()
+  const { toast } = useToast()
   const [role, setRole] = useState<UserRole>("INSTITUICAO")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,6 +97,14 @@ export default function CadastroPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    if (password.trim().length < 6) {
+      const msg = "A senha deve ter no mínimo 6 caracteres."
+      setError(msg)
+      toast({ title: "Senha inválida", description: msg, variant: "destructive" })
+      setLoading(false)
+      return
+    }
 
     const base = { role, displayName, email: email.toLowerCase().trim(), password }
     let payload: RegisterPayload
@@ -151,11 +161,36 @@ export default function CadastroPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      const json = await res.json()
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao cadastrar")
+      let json: any = null
+      try {
+        json = await res.json()
+      } catch {
+        // ignora parse error e cai no fallback abaixo
+      }
+
+      if (!res.ok || !json?.ok) {
+        const detailsText =
+          Array.isArray(json?.details) && json.details.length
+            ? json.details
+                .map((d: any) => d?.message)
+                .filter(Boolean)
+                .join(" ")
+            : null
+        const msg = detailsText || json?.error || `Não foi possível cadastrar (HTTP ${res.status}).`
+        setError(msg)
+        toast({ title: "Erro no cadastro", description: msg, variant: "destructive" })
+        return
+      }
+
+      toast({
+        title: "Cadastro criado",
+        description: "Sua conta foi criada. Agora você pode entrar com seu email e senha.",
+      })
       router.push("/auth/login")
     } catch (err: any) {
-      setError(err?.message || "Erro ao cadastrar")
+      const msg = err?.message || "Erro ao cadastrar"
+      setError(msg)
+      toast({ title: "Erro no cadastro", description: msg, variant: "destructive" })
     } finally {
       setLoading(false)
     }

@@ -23,6 +23,11 @@
   - EMPRESA → `/c/marketplace`
 - Não logado → `/auth/login`
 
+## UX — Entrada / Login
+- A tela `/demo` foi desativada (redirect para `/auth/login`).
+- O login (`/auth/login`) tem seletor **“Sou”** (role). Se o email existir com role diferente, mostra erro “perfil incompatível”.
+- Em áreas autenticadas, existe botão **Sair** no topo (encerra sessão NextAuth).
+
 ## Contas demo (seed)
 O seed cria usuários demo com senha padrão:
 - `gestor@demo.alimapa`

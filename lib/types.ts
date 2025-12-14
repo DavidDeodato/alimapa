@@ -93,6 +93,7 @@ export interface Institution {
   lat?: number
   lng?: number
   address?: string
+  phone?: string
 }
 
 export interface AuditLog {

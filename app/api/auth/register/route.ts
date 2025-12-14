@@ -4,6 +4,27 @@ import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/db"
 import { err, ok } from "@/lib/api-response"
 
+function humanizeIssue(i: z.ZodIssue) {
+  const path = i.path.join(".")
+
+  if (path === "password" && i.code === "too_small") {
+    return "A senha deve ter no mínimo 6 caracteres."
+  }
+  if (path === "email") {
+    return "Email inválido."
+  }
+  if (i.code === "invalid_type") {
+    return "Campo obrigatório."
+  }
+  if (i.code === "too_small") {
+    const anyI: any = i
+    if (typeof anyI.minimum === "number") {
+      return `Deve conter no mínimo ${anyI.minimum} caracteres.`
+    }
+  }
+  return i.message
+}
+
 const Base = z.object({
   role: z.enum(["GESTOR", "INSTITUICAO", "AGRICULTOR", "EMPRESA"]),
   displayName: z.string().min(2),
@@ -72,7 +93,7 @@ export async function POST(req: Request) {
           error: "Payload inválido.",
           details: parsed.error.issues.map((i) => ({
             path: i.path.join("."),
-            message: i.message,
+            message: humanizeIssue(i),
             code: i.code,
           })),
         },
@@ -182,6 +203,19 @@ export async function POST(req: Request) {
     })
     return ok({ userId: user.id }, { status: 201 })
   } catch (e: any) {
+    // Prisma valida campos do create() e acusa argumentos desconhecidos (ex: phone ausente no schema)
+    const name = String(e?.name || "")
+    const message = String(e?.message || "")
+    if (name.includes("PrismaClientValidationError")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Falha ao salvar no banco. Verifique os campos enviados.",
+          details: [{ path: "", message, code: "PRISMA_VALIDATION_ERROR" }],
+        },
+        { status: 400 },
+      )
+    }
     return err("Erro interno ao cadastrar.", 500)
   }
 }

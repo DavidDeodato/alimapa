@@ -8,6 +8,7 @@ declare module "next-auth" {
       email?: string | null
       role: string
       municipalityId?: string
+      avatarUrl?: string | null
     }
   }
 }

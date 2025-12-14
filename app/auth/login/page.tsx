@@ -7,16 +7,21 @@ import Image from "next/image"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
+import type { UserRole } from "@/lib/types"
 
 function LoginInner() {
   const router = useRouter()
+  const { toast } = useToast()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || "/"
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [role, setRole] = useState<UserRole>("INSTITUICAO")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,7 +29,33 @@ function LoginInner() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    // validação rápida de role vs conta (mensagem melhor que o erro genérico do NextAuth)
+    try {
+      const pre = await fetch(`/api/auth/precheck?email=${encodeURIComponent(email.toLowerCase().trim())}`)
+      const preJson = await pre.json().catch(() => null)
+      if (pre.ok && preJson?.ok) {
+        if (!preJson.data.exists) {
+          const msg = "Conta não encontrada. Faça seu cadastro."
+          setError(msg)
+          toast({ title: "Conta não encontrada", description: msg, variant: "destructive" })
+          setLoading(false)
+          return
+        }
+        if (preJson.data.role && preJson.data.role !== role) {
+          const msg = `Tipo de acesso incorreto. Essa conta é do perfil: ${String(preJson.data.role)}.`
+          setError(msg)
+          toast({ title: "Perfil incompatível", description: msg, variant: "destructive" })
+          setLoading(false)
+          return
+        }
+      }
+    } catch {
+      // se precheck falhar, segue pro signIn normalmente
+    }
+
     const res = await signIn("credentials", {
+      role,
       email,
       password,
       redirect: false,
@@ -32,7 +63,9 @@ function LoginInner() {
     })
     setLoading(false)
     if (!res || res.error) {
-      setError("Email ou senha inválidos.")
+      const msg = "Email ou senha inválidos."
+      setError(msg)
+      toast({ title: "Falha no login", description: msg, variant: "destructive" })
       return
     }
     router.push(res.url || "/")
@@ -52,6 +85,20 @@ function LoginInner() {
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Sou</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GESTOR">Gestor Municipal</SelectItem>
+                  <SelectItem value="INSTITUICAO">Instituição (Escola/ONG)</SelectItem>
+                  <SelectItem value="AGRICULTOR">Agricultor Familiar</SelectItem>
+                  <SelectItem value="EMPRESA">Empresa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
