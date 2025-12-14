@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Award, CheckCircle2, FileText, ImageIcon } from "lucide-react"
 import Link from "next/link"
 
-export default async function CreditDetailPage({ params }: { params: { id: string } }) {
+export default async function CreditDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as any).role !== "EMPRESA") redirect("/auth/login")
 
-  const { id } = params
+  const { id } = await params
 
   const credit = {
     id,

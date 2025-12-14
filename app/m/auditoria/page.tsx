@@ -1,44 +1,57 @@
-import { redirect } from "next/navigation"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { FileText, User, Calendar } from "lucide-react"
 import type { AuditLog } from "@/lib/types"
+import { useToast } from "@/hooks/use-toast"
+import { Button } from "@/components/ui/button"
 
-export default async function AuditoriaPage() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || (session.user as any).role !== "GESTOR") redirect("/auth/login")
+export default function AuditoriaPage() {
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(true)
+  const [logs, setLogs] = useState<AuditLog[]>([])
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [actionPrefix, setActionPrefix] = useState<string>("all")
 
-  const logs: AuditLog[] = [
-    {
-      id: "log-001",
-      action: "Requisição criada",
-      actor: "Escola Municipal João Paulo II",
-      entityType: "Request",
-      entityId: "req-001",
-      timestamp: "2025-01-10T10:00:00Z",
-      details: "Criação de nova requisição PNAE",
-    },
-    {
-      id: "log-002",
-      action: "Requisição validada",
-      actor: "Gestor Municipal",
-      entityType: "Request",
-      entityId: "req-001",
-      timestamp: "2025-01-11T09:00:00Z",
-      details: "Requisição aprovada para orquestração",
-    },
-    {
-      id: "log-003",
-      action: "Orquestração executada",
-      actor: "Sistema",
-      entityType: "Request",
-      entityId: "req-001",
-      timestamp: "2025-01-11T09:05:00Z",
-      details: "3 propostas geradas",
-    },
-  ]
+  const filtered = useMemo(() => logs, [logs])
+
+  const load = async (cursor?: string) => {
+    try {
+      const url = new URL("/api/m/audit", window.location.origin)
+      url.searchParams.set("limit", "50")
+      if (cursor) url.searchParams.set("cursor", cursor)
+      if (actionPrefix !== "all") url.searchParams.set("actionPrefix", actionPrefix)
+
+      const res = await fetch(url.toString())
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar auditoria")
+
+      const page: AuditLog[] = json.data.logs || []
+      setLogs((prev) => (cursor ? [...prev, ...page] : page))
+      setNextCursor(json.data.nextCursor ?? null)
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao carregar auditoria", variant: "destructive" })
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      try {
+        await load(undefined)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionPrefix])
 
   return (
     <div className="space-y-6">
@@ -51,21 +64,27 @@ export default async function AuditoriaPage() {
 
       <Card className="p-6">
         <div className="flex gap-4 mb-6">
-          <Select defaultValue="all">
+          <Select value={actionPrefix} onValueChange={setActionPrefix}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Tipo de ação" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as ações</SelectItem>
-              <SelectItem value="create">Criação</SelectItem>
-              <SelectItem value="update">Atualização</SelectItem>
-              <SelectItem value="delete">Exclusão</SelectItem>
+              <SelectItem value="request.">Requisições</SelectItem>
+              <SelectItem value="agent_config.">Agentes</SelectItem>
+              <SelectItem value="credit.">Créditos</SelectItem>
+              <SelectItem value="conversation.">Conversas</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div className="space-y-4">
-          {logs.map((log) => (
+          {loading ? (
+            <div className="text-sm text-muted-foreground">Carregando...</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Nenhum log encontrado.</div>
+          ) : (
+            filtered.map((log) => (
             <div key={log.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
               <div className="flex items-start gap-4">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -94,8 +113,17 @@ export default async function AuditoriaPage() {
                 </div>
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
+
+        {nextCursor ? (
+          <div className="pt-4">
+            <Button variant="outline" className="bg-transparent" onClick={() => load(nextCursor)} disabled={loading}>
+              Carregar mais
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </div>
   )

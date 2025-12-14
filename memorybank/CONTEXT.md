@@ -60,4 +60,10 @@ O seed cria usuários demo com senha padrão:
   - `export async function GET(req, { params }: { params: Promise<{ id: string }> }) { const { id } = await params }`
   - Validar `id` e retornar 400 ao invés de 500.
 
+## Mudanças recentes (changelog resumido)
+- Agricultores (Gestor): desmock completo com APIs reais
+  - `GET /api/m/farmers` (lista)
+  - `GET /api/m/farmers/:id` (detalhe)
+  - UI `/m/agricultores` e `/m/agricultores/:id` agora consomem API (sem dados mockados).
+
 

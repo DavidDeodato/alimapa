@@ -7,11 +7,11 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Check, X, Package, DollarSign, MapPin, Calendar } from "lucide-react"
 
-export default async function PropostaDetailPage({ params }: { params: { id: string } }) {
+export default async function PropostaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as any).role !== "AGRICULTOR") redirect("/auth/login")
 
-  const { id } = params
+  const { id } = await params
 
   const offer = {
     id,

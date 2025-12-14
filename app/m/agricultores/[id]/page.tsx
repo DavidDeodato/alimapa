@@ -1,37 +1,62 @@
-import { redirect } from "next/navigation"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
+"use client"
+
+import { use } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Package, Phone, FileText } from "lucide-react"
 import Link from "next/link"
+import { useToast } from "@/hooks/use-toast"
 
-export default async function FarmerDetailPage({ params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions)
-  if (!session?.user || (session.user as any).role !== "GESTOR") redirect("/auth/login")
+type FarmerDetail = {
+  id: string
+  name: string
+  products: string[]
+  capacity?: string
+  cafStatus: "ATIVO" | "PENDENTE" | "INATIVO"
+  address?: string
+  phone?: string
+  lat?: number
+  lng?: number
+}
 
-  const { id } = params
+export default function FarmerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { toast } = useToast()
+  const { id } = use(params)
+  const [loading, setLoading] = useState(true)
+  const [farmer, setFarmer] = useState<FarmerDetail | null>(null)
 
-  const farmer = {
-    id,
-    name: "João da Silva",
-    products: ["Alface", "Tomate", "Cenoura"],
-    capacity: "200 kg/semana",
-    cafStatus: "ATIVO" as const,
-    address: "Sítio Boa Vista, Zona Rural",
-    phone: "(61) 98765-4321",
-    lat: -15.78,
-    lng: -47.93,
-  }
+  useEffect(() => {
+    let cancelled = false
+    async function run() {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/m/farmers/${id}`)
+        const json = await res.json().catch(() => null)
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar agricultor")
+        if (!cancelled) setFarmer(json.data.farmer)
+      } catch (e: any) {
+        toast({ title: "Erro", description: e?.message || "Falha ao carregar agricultor", variant: "destructive" })
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    if (id) run()
+    return () => {
+      cancelled = true
+    }
+  }, [id, toast])
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-foreground">{farmer.name}</h1>
-            <Badge variant={farmer.cafStatus === "ATIVO" ? "default" : "secondary"}>CAF {farmer.cafStatus}</Badge>
+            <h1 className="text-3xl font-bold text-foreground">{farmer?.name ?? (loading ? "Carregando..." : "Agricultor")}</h1>
+            {farmer ? (
+              <Badge variant={farmer.cafStatus === "ATIVO" ? "default" : "secondary"}>CAF {farmer.cafStatus}</Badge>
+            ) : null}
           </div>
           <p className="text-muted-foreground">Agricultor Familiar</p>
         </div>
@@ -48,14 +73,14 @@ export default async function FarmerDetailPage({ params }: { params: { id: strin
               <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
               <div>
                 <div className="text-sm font-medium">Endereço</div>
-                <div className="text-sm text-muted-foreground">{farmer.address}</div>
+                <div className="text-sm text-muted-foreground">{farmer?.address ?? "-"}</div>
               </div>
             </div>
             <div className="flex items-start gap-3">
               <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
               <div>
                 <div className="text-sm font-medium">Telefone</div>
-                <div className="text-sm text-muted-foreground">{farmer.phone}</div>
+                <div className="text-sm text-muted-foreground">{farmer?.phone ?? "-"}</div>
               </div>
             </div>
           </div>
@@ -70,7 +95,7 @@ export default async function FarmerDetailPage({ params }: { params: { id: strin
             <div>
               <div className="text-sm font-medium mb-2">Produtos Disponíveis</div>
               <div className="flex flex-wrap gap-2">
-                {farmer.products.map((product) => (
+                {(farmer?.products ?? []).map((product) => (
                   <Badge key={product} variant="outline">
                     {product}
                   </Badge>
@@ -79,7 +104,7 @@ export default async function FarmerDetailPage({ params }: { params: { id: strin
             </div>
             <div>
               <div className="text-sm font-medium">Capacidade de Produção</div>
-              <div className="text-sm text-muted-foreground">{farmer.capacity}</div>
+              <div className="text-sm text-muted-foreground">{farmer?.capacity ?? "-"}</div>
             </div>
           </div>
         </Card>
