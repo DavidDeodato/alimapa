@@ -42,7 +42,12 @@ function computeProposedValue(
   return marketValue * multiplier
 }
 
-export async function orchestrateRequest(params: { requestId: string; startedByUserId: string }) {
+export async function orchestrateRequest(params: {
+  requestId: string
+  startedByUserId: string
+  agentConfigId?: string
+  farmerIds?: string[]
+}) {
   const request = await prisma.request.findUnique({
     where: { id: params.requestId },
     include: {
@@ -53,6 +58,15 @@ export async function orchestrateRequest(params: { requestId: string; startedByU
   })
   if (!request) throw new Error("Requisição não encontrada")
   if (request.status !== "VALIDATED") throw new Error("A requisição precisa estar VALIDATED para orquestrar")
+
+  const selectedAgentConfig = params.agentConfigId
+    ? await prisma.agentConfig.findUnique({ where: { id: params.agentConfigId } })
+    : null
+  if (params.agentConfigId) {
+    if (!selectedAgentConfig) throw new Error("Agente não encontrado")
+    if (!selectedAgentConfig.isActive) throw new Error("Agente inativo")
+    if (selectedAgentConfig.municipalityId !== request.municipalityId) throw new Error("Agente não pertence ao município da requisição")
+  }
 
   const farmers = await prisma.farmer.findMany({
     where: { municipalityId: request.municipalityId },
@@ -80,7 +94,9 @@ export async function orchestrateRequest(params: { requestId: string; startedByU
     .filter((x) => x.overlap > 0)
     .sort((a, b) => b.score - a.score)
 
-  const top = ranked.slice(0, 3)
+  const top = Array.isArray(params.farmerIds) && params.farmerIds.length
+    ? ranked.filter((r) => params.farmerIds!.includes(r.farmer.id)).slice(0, 3)
+    : ranked.slice(0, 3)
   if (top.length === 0) {
     await prisma.request.update({
       where: { id: request.id },
@@ -123,6 +139,7 @@ export async function orchestrateRequest(params: { requestId: string; startedByU
   const offers = []
   for (const candidate of top) {
     const agentConfig =
+      selectedAgentConfig ||
       (await prisma.agentConfig.findFirst({
         where: { municipalityId: request.municipalityId, farmerId: candidate.farmer.id, isActive: true },
       })) ||
@@ -152,7 +169,18 @@ export async function orchestrateRequest(params: { requestId: string; startedByU
       },
     })
 
-    const sys = `Você é o agente orquestrador do Alimapa. Você não toma decisões finais; você explica e negocia. Sempre fale em PT-BR. Seja claro e respeitoso.`
+    const sys = [
+      `Você é o agente do Alimapa responsável por propor ofertas e iniciar uma conversa com o agricultor.`,
+      `Sempre fale em PT-BR. Seja claro, curto e respeitoso.`,
+      agentConfig?.personality ? `Personalidade: ${agentConfig.personality}` : null,
+      Array.isArray(agentConfig?.objectives) && agentConfig!.objectives.length
+        ? `Objetivos: ${agentConfig!.objectives.join("; ")}`
+        : null,
+      agentConfig?.instructions ? `Instruções adicionais: ${agentConfig.instructions}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n")
+
     const user = `Gere uma mensagem inicial curta para o agricultor ${candidate.farmer.name} com base na requisição.\n\nRequisição:\n- Programa: ${request.program}\n- Itens: ${items.map((i) => `${i.quantity}${i.unit} ${i.productName}`).join(", ")}\n- Prazo: ${request.needByDate.toISOString().slice(0, 10)}\n- Valor de mercado estimado: R$ ${marketValue.toFixed(2)}\n- Proposta: R$ ${proposedValue.toFixed(2)}\n\nPeça confirmação de capacidade e disponibilidade.`
 
     let initialMessage: string
@@ -205,6 +233,60 @@ export async function orchestrateRequest(params: { requestId: string; startedByU
   })
 
   return { offers, explainability, runId: run.id }
+}
+
+export async function analyzeRequest(params: { requestId: string }) {
+  const request = await prisma.request.findUnique({
+    where: { id: params.requestId },
+    include: {
+      institution: true,
+      items: true,
+      municipality: true,
+    },
+  })
+  if (!request) throw new Error("Requisição não encontrada")
+  if (request.status !== "VALIDATED") throw new Error("A requisição precisa estar VALIDATED para analisar")
+
+  const farmers = await prisma.farmer.findMany({
+    where: { municipalityId: request.municipalityId },
+  })
+
+  const reqProducts = new Set(request.items.map((i) => i.productName.toLowerCase()))
+  const reqPoint =
+    request.lat != null && request.lng != null
+      ? { lat: request.lat, lng: request.lng }
+      : request.municipality.centerLat && request.municipality.centerLng
+        ? { lat: request.municipality.centerLat, lng: request.municipality.centerLng }
+        : null
+
+  const ranked = farmers
+    .map((f) => {
+      const overlap = f.products.filter((p) => reqProducts.has(p.toLowerCase())).length
+      const dist = reqPoint && f.lat != null && f.lng != null ? haversineKm(reqPoint, { lat: f.lat, lng: f.lng }) : null
+      const cafBonus = f.cafStatus === "ATIVO" ? 10 : f.cafStatus === "PENDENTE" ? 5 : 0
+      const score = overlap * 30 + cafBonus + (dist == null ? 0 : Math.max(0, 20 - dist))
+      const reasons: string[] = []
+      if (overlap > 0) reasons.push(`Compatibilidade de produtos (${overlap})`)
+      if (dist != null) reasons.push(`Distância estimada: ${dist.toFixed(1)} km`)
+      reasons.push(`CAF: ${f.cafStatus}`)
+      return { farmer: f, overlap, dist, score, reasons }
+    })
+    .filter((x) => x.overlap > 0)
+    .sort((a, b) => b.score - a.score)
+
+  const explainability = {
+    requestId: request.id,
+    candidates: ranked.slice(0, 5).map((r) => ({
+      farmerId: r.farmer.id,
+      farmerName: r.farmer.name,
+      score: r.score,
+      distanceKm: r.dist,
+      reasons: r.reasons,
+      products: r.farmer.products,
+    })),
+  }
+
+  return { explainability }
 }
 
 

@@ -10,43 +10,11 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "next-auth/react"
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
-import L from "leaflet"
+import dynamic from "next/dynamic"
 
-// Fix do Marker do Leaflet no bundler (senão o ícone some)
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+const LocationMapPicker = dynamic(() => import("@/components/location-map-picker").then((m) => m.LocationMapPicker), {
+  ssr: false,
 })
-
-const pulseIcon = L.divIcon({
-  className: "",
-  html: '<div class="pulse-marker"></div>',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-})
-
-function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onLocationSelect(e.latlng.lat, e.latlng.lng)
-    },
-  })
-  return null
-}
-
-function MapResizer({ center }: { center: [number, number] }) {
-  const map = useMap()
-  useEffect(() => {
-    setTimeout(() => {
-      map.invalidateSize()
-      map.setView(center)
-    }, 50)
-  }, [map, center])
-  return null
-}
 
 export default function PerfilPage() {
   const { toast } = useToast()
@@ -354,19 +322,13 @@ export default function PerfilPage() {
 
           <div className="space-y-2">
             <Label>Ou clique no mapa para marcar</Label>
-            <div className="h-[320px] rounded-lg overflow-hidden border">
-              <MapContainer center={center} zoom={13} style={{ height: "100%", width: "100%" }}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <MapResizer center={center} />
-                <LocationPicker
-                  onLocationSelect={(lat, lng) => {
-                    setFormData({ ...formData, lat: String(lat), lng: String(lng) })
-                    toast({ title: "Localização marcada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
-                  }}
-                />
-                <Marker position={center} icon={pulseIcon} />
-              </MapContainer>
-            </div>
+            <LocationMapPicker
+              center={center}
+              onPick={(lat, lng) => {
+                setFormData({ ...formData, lat: String(lat), lng: String(lng) })
+                toast({ title: "Localização marcada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+              }}
+            />
           </div>
 
           <div className="space-y-2">

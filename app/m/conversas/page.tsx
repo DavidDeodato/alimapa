@@ -41,7 +41,7 @@ export default function ConversasPage() {
   const loadConversations = async () => {
     try {
       const res = await fetch("/api/conversations")
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar conversas")
       const list: ConversationListItem[] = json.data.conversations || []
       setConversations(list)
@@ -54,7 +54,7 @@ export default function ConversasPage() {
   const loadMessages = async (conversationId: string) => {
     try {
       const res = await fetch(`/api/conversations/${conversationId}/messages`)
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar mensagens")
       setMessages(json.data.messages || [])
       await fetch(`/api/conversations/${conversationId}/read`, { method: "POST" }).catch(() => null)
@@ -85,7 +85,7 @@ export default function ConversasPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
       })
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao enviar mensagem")
       setMessages((prev) => [...prev, json.data.message])
       await loadConversations()

@@ -3,7 +3,9 @@ import { authOptions } from "@/lib/auth-options"
 import { prisma } from "@/lib/db"
 import { err, ok } from "@/lib/api-response"
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  if (!id) return err("Oferta inválida.", 400)
   const session = await getServerSession(authOptions)
   if (!session?.user) return err("Não autenticado.", 401)
 
@@ -13,7 +15,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   if (!role || !userId) return err("Sessão inválida.", 401)
 
   const conversation = await prisma.conversation.findUnique({
-    where: { offerId: params.id },
+    where: { offerId: id },
     include: { farmer: true, offer: { include: { request: true } } },
   })
   if (!conversation) return err("Conversa não encontrada para esta proposta.", 404)
@@ -31,5 +33,6 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   return err("Perfil sem acesso a conversas.", 403)
 }
+
 
 

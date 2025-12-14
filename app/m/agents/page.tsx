@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,28 +11,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Bot, Settings, MessageSquare, Play, Pause, Plus, Search } from "lucide-react"
 import type { AgentConfig } from "@/lib/types"
-
-const mockAgents: AgentConfig[] = [
-  {
-    id: "1",
-    farmerId: "f1",
-    farmerName: "João Silva",
-    personality: "Profissional e empático",
-    objectives: ["Maximizar aceitação de ofertas", "Manter bom relacionamento"],
-    offerCalculation: "FIXED_PER_PRODUCT",
-    fixedDiscounts: { alface: 15, tomate: 10 },
-    isActive: true,
-    createdAt: "2025-01-10T10:00:00Z",
-    updatedAt: "2025-01-10T10:00:00Z",
-  },
-]
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 
 export default function AgentsPage() {
+  const { toast } = useToast()
   const [search, setSearch] = useState("")
   const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null)
   const [isConfigOpen, setIsConfigOpen] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [agents, setAgents] = useState<AgentConfig[]>([])
+  const [farmers, setFarmers] = useState<Array<{ id: string; name: string }>>([])
 
   const [configForm, setConfigForm] = useState({
+    farmerId: "__DEFAULT__",
     personality: "",
     objectives: "",
     offerCalculation: "FIXED_PER_PRODUCT" as const,
@@ -40,6 +32,123 @@ export default function AgentsPage() {
     customFormula: "",
     instructions: "",
   })
+
+  const filteredAgents = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    if (!s) return agents
+    return agents.filter((a) => a.farmerName.toLowerCase().includes(s) || a.personality.toLowerCase().includes(s))
+  }, [agents, search])
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [agentsRes, farmersRes] = await Promise.all([fetch("/api/m/agents"), fetch("/api/m/farmers")])
+      const agentsJson = await agentsRes.json().catch(() => null)
+      const farmersJson = await farmersRes.json().catch(() => null)
+      if (!agentsRes.ok || !agentsJson?.ok) throw new Error(agentsJson?.error || "Falha ao carregar agentes")
+      if (!farmersRes.ok || !farmersJson?.ok) throw new Error(farmersJson?.error || "Falha ao carregar agricultores")
+      setAgents(agentsJson.data.agents || [])
+      setFarmers((farmersJson.data.farmers || []).map((f: any) => ({ id: f.id, name: f.name })))
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível carregar a gestão de agentes.", variant: "destructive" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const parseFixedDiscounts = (txt: string) => {
+    const out: Record<string, number> = {}
+    txt
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .forEach((line) => {
+        const [kRaw, vRaw] = line.split(":").map((p) => p.trim())
+        if (!kRaw || !vRaw) return
+        const v = Number(vRaw.replace("%", ""))
+        if (!Number.isFinite(v)) return
+        out[kRaw.toLowerCase()] = v
+      })
+    return Object.keys(out).length ? out : undefined
+  }
+
+  const openNew = () => {
+    setSelectedAgent(null)
+    setConfigForm({
+      farmerId: "__DEFAULT__",
+      personality: "",
+      objectives: "",
+      offerCalculation: "FIXED_PER_PRODUCT",
+      fixedDiscounts: "",
+      customFormula: "",
+      instructions: "",
+    })
+    setIsConfigOpen(true)
+  }
+
+  const openEdit = (agent: AgentConfig) => {
+    setSelectedAgent(agent)
+    setConfigForm({
+      farmerId: agent.farmerId || "__DEFAULT__",
+      personality: agent.personality || "",
+      objectives: (agent.objectives || []).join("\n"),
+      offerCalculation: agent.offerCalculation,
+      fixedDiscounts: agent.fixedDiscounts
+        ? Object.entries(agent.fixedDiscounts)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n")
+        : "",
+      customFormula: agent.customFormula || "",
+      instructions: agent.instructions || "",
+    })
+    setIsConfigOpen(true)
+  }
+
+  const save = async () => {
+    try {
+      const payload = {
+        farmerId: configForm.farmerId === "__DEFAULT__" ? "__DEFAULT__" : configForm.farmerId,
+        personality: configForm.personality,
+        objectives: configForm.objectives
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean),
+        offerCalculation: configForm.offerCalculation,
+        fixedDiscounts: configForm.offerCalculation === "FIXED_PER_PRODUCT" ? parseFixedDiscounts(configForm.fixedDiscounts) : undefined,
+        customFormula: configForm.offerCalculation === "CUSTOM_PER_FARMER" ? configForm.customFormula || undefined : undefined,
+        instructions: configForm.instructions || undefined,
+        isActive: selectedAgent?.isActive ?? true,
+      }
+      const res = await fetch("/api/m/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao salvar configuração")
+      toast({ title: "Configuração salva" })
+      setIsConfigOpen(false)
+      await load()
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível salvar.", variant: "destructive" })
+    }
+  }
+
+  const toggle = async (agentId: string) => {
+    try {
+      const res = await fetch(`/api/m/agents/${agentId}/toggle`, { method: "POST" })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao alternar status")
+      await load()
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Não foi possível alternar o agente.", variant: "destructive" })
+    }
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -52,7 +161,7 @@ export default function AgentsPage() {
         </div>
         <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2 bg-gradient-to-r from-primary to-secondary hover:opacity-90">
+            <Button onClick={openNew} className="gap-2 bg-gradient-to-r from-primary to-secondary hover:opacity-90">
               <Plus className="h-4 w-4" />
               Novo Agente
             </Button>
@@ -62,6 +171,23 @@ export default function AgentsPage() {
               <DialogTitle>Configurar Agente IA</DialogTitle>
             </DialogHeader>
             <div className="space-y-6 pt-4">
+              <div className="space-y-2">
+                <Label>Agricultor (opcional)</Label>
+                <Select value={configForm.farmerId} onValueChange={(v) => setConfigForm({ ...configForm, farmerId: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecionar agricultor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__DEFAULT__">Padrão do município (fallback)</SelectItem>
+                    {farmers.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label>Personalidade do Agente</Label>
                 <Textarea
@@ -140,7 +266,7 @@ export default function AgentsPage() {
                 <Button variant="outline" onClick={() => setIsConfigOpen(false)}>
                   Cancelar
                 </Button>
-                <Button>Salvar Configuração</Button>
+                <Button onClick={save}>Salvar Configuração</Button>
               </div>
             </div>
           </DialogContent>
@@ -160,7 +286,12 @@ export default function AgentsPage() {
       </Card>
 
       <div className="grid gap-4">
-        {mockAgents.map((agent) => (
+        {loading ? (
+          <Card className="p-6 text-sm text-muted-foreground">Carregando...</Card>
+        ) : filteredAgents.length === 0 ? (
+          <Card className="p-6 text-sm text-muted-foreground">Nenhum agente configurado ainda.</Card>
+        ) : (
+          filteredAgents.map((agent) => (
           <Card key={agent.id} className="p-6 hover:shadow-lg transition-shadow">
             <div className="flex items-start justify-between">
               <div className="flex gap-4">
@@ -181,21 +312,29 @@ export default function AgentsPage() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-                  <MessageSquare className="h-4 w-4" />
-                  Ver Chat
+                <Button asChild variant="outline" size="sm" className="gap-2 bg-transparent">
+                  <Link href="/m/conversas">
+                    <MessageSquare className="h-4 w-4" />
+                    Ver Chat
+                  </Link>
                 </Button>
-                <Button variant="outline" size="sm" className="gap-2 bg-transparent">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 bg-transparent"
+                  onClick={() => openEdit(agent)}
+                >
                   <Settings className="h-4 w-4" />
                   Configurar
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => toggle(agent.id)}>
                   {agent.isActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
           </Card>
-        ))}
+          ))
+        )}
       </div>
     </div>
   )

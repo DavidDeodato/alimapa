@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet"
-import L from "leaflet"
+import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,40 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, ArrowRight, ArrowLeft, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
-// Fix do Marker do Leaflet no bundler (senão o ícone some)
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+const LocationMapPicker = dynamic(() => import("@/components/location-map-picker").then((m) => m.LocationMapPicker), {
+  ssr: false,
 })
-
-const pulseIcon = L.divIcon({
-  className: "",
-  html: '<div class="pulse-marker"></div>',
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
-})
-
-function LocationPicker({ onLocationSelect }: { onLocationSelect: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onLocationSelect(e.latlng.lat, e.latlng.lng)
-    },
-  })
-  return null
-}
-
-function MapResizer({ center }: { center: [number, number] }) {
-  const map = useMap()
-  useEffect(() => {
-    setTimeout(() => {
-      map.invalidateSize()
-      map.setView(center)
-    }, 50)
-  }, [map, center])
-  return null
-}
 
 export default function NovaRequisicaoPage() {
   const router = useRouter()
@@ -345,24 +313,15 @@ export default function NovaRequisicaoPage() {
 
                 <div className="space-y-2">
                   <Label>Ou clique no mapa para marcar sua localização</Label>
-                  <div className="h-[420px] rounded-lg overflow-hidden border">
-                    <MapContainer
-                      key={mapKey}
-                      center={center}
-                      zoom={13}
-                      style={{ height: "100%", width: "100%" }}
-                    >
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                      <MapResizer center={center} />
-                      <LocationPicker
-                        onLocationSelect={(lat, lng) => {
-                          setFormData({ ...formData, lat, lng })
-                          toast({ title: "Localização atualizada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
-                        }}
-                      />
-                      <Marker position={center} icon={pulseIcon} />
-                    </MapContainer>
-                  </div>
+                  <LocationMapPicker
+                    key={mapKey}
+                    center={center}
+                    height={420}
+                    onPick={(lat, lng) => {
+                      setFormData({ ...formData, lat, lng })
+                      toast({ title: "Localização atualizada", description: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+                    }}
+                  />
                   <p className="text-sm text-muted-foreground">
                     Coordenadas: {formData.lat.toFixed(6)}, {formData.lng.toFixed(6)}
                   </p>

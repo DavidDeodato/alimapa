@@ -56,4 +56,8 @@ O seed cria usuários demo com senha padrão:
 ## Debug / Observações
 - `POST /api/auth/register`: quando o payload é inválido, a API retorna `details` com os erros do Zod (path/message) para facilitar ajuste de contrato.
 
+- **Next 16 (App Router) — params Promise**: rotas dinâmicas em `app/api/**/[id]/route.ts` podem receber `params` como **Promise**. Se o handler acessa `params.id` direto, o `id` vira `undefined` e o Prisma quebra (ex.: `GET /api/conversations/:id/messages`). Padronizar para:
+  - `export async function GET(req, { params }: { params: Promise<{ id: string }> }) { const { id } = await params }`
+  - Validar `id` e retornar 400 ao invés de 500.
+
 

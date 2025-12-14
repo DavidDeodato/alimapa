@@ -2,7 +2,8 @@ import { ok, err } from "@/lib/api-response"
 import { prisma } from "@/lib/db"
 import { requireRole } from "@/lib/auth-server"
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const auth = await requireRole("GESTOR")
   if (!auth.ok) return err(auth.error, 401)
 
@@ -10,7 +11,7 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   if (!municipalityId) return err("Usuário gestor sem município associado", 500)
 
   const r = await prisma.request.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { institution: true, items: true, offers: { include: { farmer: true, items: true } } },
   })
   if (!r) return err("Requisição não encontrada", 404)

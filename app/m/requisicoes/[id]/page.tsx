@@ -1,7 +1,7 @@
 "use client"
 
 import { use } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { StatusBadge } from "@/components/status-badge"
@@ -30,6 +30,7 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import type { Offer, Request } from "@/lib/types"
 import { useToast } from "@/hooks/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -37,19 +38,22 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const [loading, setLoading] = useState(true)
   const [request, setRequest] = useState<Request | null>(null)
   const [offers, setOffers] = useState<Offer[]>([])
+  const [agentConfigs, setAgentConfigs] = useState<Array<{ id: string; farmerName: string; isActive: boolean }>>([])
+  const [selectedAgentConfigId, setSelectedAgentConfigId] = useState<string>("")
   const [isAgentRunning, setIsAgentRunning] = useState(false)
   const [agentStep, setAgentStep] = useState(0)
   const [matchedFarmers, setMatchedFarmers] = useState<any[]>([])
   const [agentProgress, setAgentProgress] = useState(0)
+  const [sendStatuses, setSendStatuses] = useState<Record<string, "pending" | "sending" | "sent">>({})
+  const sendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const canValidate = request?.status === "SUBMITTED"
-  const canOrchestrate = request?.status === "VALIDATED"
 
   const refresh = async () => {
     setLoading(true)
     try {
       const res = await fetch(`/api/m/requests/${id}`)
-      const json = await res.json()
+      const json = await res.json().catch(() => null)
       if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao carregar requisição")
       setRequest(json.data.request)
       setOffers(json.data.offers ?? [])
@@ -65,50 +69,158 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
+  useEffect(() => {
+    let cancelled = false
+    async function loadAgents() {
+      try {
+        const res = await fetch("/api/m/agents")
+        const json = await res.json().catch(() => null)
+        if (!res.ok || !json?.ok) return
+        const list = (json.data.agents || []).map((a: any) => ({
+          id: a.id,
+          farmerName: a.farmerName,
+          isActive: !!a.isActive,
+        }))
+        if (!cancelled) {
+          setAgentConfigs(list.filter((a: any) => a.isActive))
+          if (!selectedAgentConfigId && list.length) setSelectedAgentConfigId(list[0].id)
+        }
+      } catch {
+        // silencioso
+      }
+    }
+    loadAgents()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const runAIAgent = async () => {
+    if (!selectedAgentConfigId) {
+      toast({
+        title: "Selecione um agente",
+        description: "Você precisa escolher um agente ativo antes de rodar a automação.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (sendIntervalRef.current) {
+      clearInterval(sendIntervalRef.current)
+      sendIntervalRef.current = null
+    }
+
     setIsAgentRunning(true)
     setAgentStep(0)
     setAgentProgress(0)
+    setMatchedFarmers([])
+    setSendStatuses({})
 
     try {
       setAgentStep(1)
-      setAgentProgress(25)
-      const res = await fetch(`/api/requests/${id}/orchestrate`, { method: "POST" })
-      const json = await res.json()
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao orquestrar")
-      await refresh()
+      setAgentProgress(20)
+      await new Promise((r) => setTimeout(r, 400))
+      setAgentStep(2)
+      setAgentProgress(45)
 
-      // lista de candidatos simplificada (a UI atual espera esse shape)
-      const candidates = (json.data?.offers ?? []).map((o: any) => ({
-        id: o.farmerId,
-        name: o.farmerName,
-        distance: o.distance ?? null,
-        products: (o.items ?? []).map((it: any) => it.productName),
-        canFulfill: 100,
-        score: 0,
-        reason: "Proposta gerada pelo orquestrador.",
-      }))
+      const res = await fetch(`/api/requests/${id}/analyze`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ agentConfigId: selectedAgentConfigId }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Falha ao analisar")
+
+      setAgentStep(3)
+      setAgentProgress(70)
+
+      // candidatos com explicabilidade (quando disponível)
+      const explain = json.data?.explainability?.candidates ?? []
+      const candidates =
+        Array.isArray(explain) && explain.length
+          ? explain.map((c: any) => ({
+              id: c.farmerId,
+              name: c.farmerName,
+              distance: c.distanceKm ?? null,
+              products: Array.isArray(c.products) ? c.products : [],
+              canFulfill: 100,
+              score: c.score ?? 0,
+              reason: Array.isArray(c.reasons) ? c.reasons.join(" • ") : "Selecionado por compatibilidade.",
+            }))
+          : (json.data?.offers ?? []).map((o: any) => ({
+              id: o.farmerId,
+              name: o.farmerName,
+              distance: o.distance ?? null,
+              products: (o.items ?? []).map((it: any) => it.productName),
+              canFulfill: 100,
+              score: 0,
+              reason: "Proposta gerada pelo orquestrador.",
+            }))
       setMatchedFarmers(candidates)
-      setAgentStep(4)
-      setAgentProgress(100)
-      toast({ title: "Orquestração concluída", description: "Propostas geradas e conversas iniciadas (se aplicável)." })
-    } catch (e: any) {
-      toast({ title: "Erro", description: e?.message || "Falha ao orquestrar", variant: "destructive" })
-    }
-  }
 
-  const sendProposals = async (farmerIds: string[]) => {
-    setAgentStep(5)
-    setIsAgentRunning(false)
-    setAgentStep(0)
+      const target = candidates.slice(0, 3)
+      if (target.length === 0) throw new Error("Nenhum agricultor compatível encontrado.")
+
+      // inicia animação de envio
+      setAgentStep(4)
+      setAgentProgress(85)
+      setSendStatuses(Object.fromEntries(target.map((t: any) => [t.id, "pending"])))
+      let idx = -1
+      sendIntervalRef.current = setInterval(() => {
+        idx += 1
+        setSendStatuses((prev) => {
+          const next: Record<string, "pending" | "sending" | "sent"> = { ...prev }
+          // marca anteriores como enviados
+          for (let i = 0; i < target.length; i++) {
+            const id = target[i].id
+            if (i < idx) next[id] = "sent"
+            else if (i === idx) next[id] = "sending"
+            else next[id] = "pending"
+          }
+          return next
+        })
+        if (idx >= target.length) {
+          if (sendIntervalRef.current) clearInterval(sendIntervalRef.current)
+          sendIntervalRef.current = null
+        }
+      }, 900)
+
+      const sendRes = await fetch(`/api/requests/${id}/orchestrate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ agentConfigId: selectedAgentConfigId, farmerIds: target.map((t: any) => t.id) }),
+      })
+      const sendJson = await sendRes.json().catch(() => null)
+      if (!sendRes.ok || !sendJson?.ok) throw new Error(sendJson?.error || "Falha ao enviar propostas")
+
+      if (sendIntervalRef.current) {
+        clearInterval(sendIntervalRef.current)
+        sendIntervalRef.current = null
+      }
+      setSendStatuses((prev) => {
+        const next = { ...prev }
+        for (const t of target) next[t.id] = "sent"
+        return next
+      })
+
+      setAgentStep(5)
+      setAgentProgress(100)
+      toast({ title: "Propostas enviadas", description: "Ofertas criadas e conversas iniciadas. Veja em Conversas." })
+      await refresh()
+    } catch (e: any) {
+      toast({ title: "Erro", description: e?.message || "Falha ao rodar automação", variant: "destructive" })
+    } finally {
+      setIsAgentRunning(false)
+    }
   }
 
   const agentSteps = [
     { icon: Search, label: "Analisando requisição", color: "text-blue-500" },
     { icon: Search, label: "Buscando agricultores disponíveis", color: "text-purple-500" },
     { icon: CheckCircle, label: "Comparando requisitos", color: "text-orange-500" },
-    { icon: MessageSquare, label: "Propostas prontas para envio", color: "text-green-500" },
-    { icon: CheckCircle2, label: "Enviando mensagens...", color: "text-primary" },
+    { icon: CheckCircle, label: "Selecionando melhores matches", color: "text-green-600" },
+    { icon: MessageSquare, label: "Enviando propostas e mensagens...", color: "text-primary" },
   ]
 
   return (
@@ -218,20 +330,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </Card>
           )}
 
-          {canOrchestrate && (
-            <Card className="p-6 bg-green-50 border-green-200">
-              <h2 className="text-xl font-semibold mb-4">Próxima Etapa</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Requisição validada. Você pode agora rodar o orquestrador para encontrar agricultores compatíveis.
-              </p>
-              <Button className="w-full" onClick={runAIAgent} disabled={isAgentRunning}>
-                {isAgentRunning ? "Orquestrando..." : "Rodar Orquestrador"}
-              </Button>
-            </Card>
-          )}
-
           {/* Propostas */}
-          {request.status === "VALIDATED" && (
+          {(request?.status === "VALIDATED" || request?.status === "PROPOSALS_SENT" || request?.status === "FULFILLING") && (
             <Card className="card-elevated overflow-hidden">
               <div className="p-6 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5">
                 <div className="flex items-center gap-3 mb-4">
@@ -246,6 +346,29 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                 </div>
 
+                <div className="mb-4">
+                  <div className="text-sm font-medium mb-2">Agente selecionado</div>
+                  <Select
+                    value={selectedAgentConfigId || "none"}
+                    onValueChange={(v) => setSelectedAgentConfigId(v === "none" ? "" : v)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecionar agente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agentConfigs.length === 0 && <SelectItem value="none">Nenhum agente ativo</SelectItem>}
+                      {agentConfigs.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.farmerName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Esse agente define tom da mensagem e cálculo de proposta (configurado em “Agentes IA”).
+                  </p>
+                </div>
+
                 {!isAgentRunning && agentStep === 0 && (
                   <Button
                     onClick={runAIAgent}
@@ -253,7 +376,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     className="w-full bg-gradient-to-r from-primary via-secondary to-accent hover:opacity-90 transition-all duration-300"
                   >
                     <Sparkles className="h-5 w-5 mr-2" />
-                    Encontrar Melhores Fornecedores e Propor Ofertas com Agente de IA
+                    Encontrar Melhores Fornecedores e Enviar Propostas Automaticamente
                   </Button>
                 )}
 
@@ -311,7 +434,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     </div>
 
                     {/* Matched Farmers Results */}
-                    {agentStep === 3 && matchedFarmers.length > 0 && (
+                    {matchedFarmers.length > 0 && agentStep >= 3 && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-lg">Agricultores Encontrados</h3>
@@ -321,44 +444,38 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                         </div>
 
                         <div className="space-y-3">
-                          {matchedFarmers.map((farmer) => (
-                            <Card key={farmer.id} className="p-4 border-2 hover:border-primary/50 transition-colors">
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-3 mb-2">
-                                    <User className="h-5 w-5 text-primary" />
-                                    <h4 className="font-semibold">{farmer.name}</h4>
-                                    <Badge variant="outline" className="text-xs">
-                                      Score: {farmer.score}%
-                                    </Badge>
+                          {matchedFarmers.slice(0, 5).map((farmer) => {
+                            const status = sendStatuses[farmer.id]
+                            return (
+                              <Card key={farmer.id} className="p-4 border-2 hover:border-primary/50 transition-colors">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-3 mb-2">
+                                      <User className="h-5 w-5 text-primary" />
+                                      <h4 className="font-semibold">{farmer.name}</h4>
+                                      <Badge variant="outline" className="text-xs">
+                                        Score: {farmer.score}%
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground mb-3">{farmer.reason}</p>
+                                    <div className="flex gap-4 text-xs text-muted-foreground">
+                                      <span>📍 {farmer.distance ?? "-"}km</span>
+                                      <span>📦 {farmer.products.join(", ")}</span>
+                                    </div>
                                   </div>
-                                  <p className="text-sm text-muted-foreground mb-3">{farmer.reason}</p>
-                                  <div className="flex gap-4 text-xs text-muted-foreground">
-                                    <span>📍 {farmer.distance}km</span>
-                                    <span>📦 {farmer.products.join(", ")}</span>
-                                    <span>✅ {farmer.canFulfill}% atendido</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </Card>
-                          ))}
-                        </div>
 
-                        <div className="flex gap-3 pt-4">
-                          <Button
-                            onClick={() => sendProposals(matchedFarmers.map((f) => f.id))}
-                            className="flex-1 bg-gradient-to-r from-primary to-secondary hover:opacity-90"
-                          >
-                            <MessageSquare className="h-4 w-4 mr-2" />
-                            Enviar Propostas para Todos
-                          </Button>
-                          <Button
-                            onClick={() => sendProposals([matchedFarmers[0].id])}
-                            variant="outline"
-                            className="flex-1"
-                          >
-                            Enviar para Melhor Match
-                          </Button>
+                                  {status ? (
+                                    <Badge
+                                      variant={status === "sent" ? "default" : "secondary"}
+                                      className={cn(status === "sent" && "bg-green-600")}
+                                    >
+                                      {status === "pending" ? "Aguardando" : status === "sending" ? "Enviando..." : "Enviado"}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                              </Card>
+                            )
+                          })}
                         </div>
                       </div>
                     )}

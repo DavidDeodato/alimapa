@@ -34,20 +34,22 @@ async function assertAccess(conversationId: string, session: any) {
   return { ok: false as const, status: 403, error: "Perfil sem acesso a conversas." }
 }
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  if (!id) return err("Conversa inválida.", 400)
   const session = await getServerSession(authOptions)
   if (!session?.user) return err("Não autenticado.", 401)
 
-  const access = await assertAccess(params.id, session)
+  const access = await assertAccess(id, session)
   if (!access.ok) return err(access.error, access.status)
 
   const messages = await prisma.message.findMany({
-    where: { conversationId: params.id },
+    where: { conversationId: id },
     orderBy: { createdAt: "asc" },
   })
 
   return ok({
-    conversationId: params.id,
+    conversationId: id,
     messages: messages.map((m) => ({
       id: m.id,
       role: mapSenderToRole(m.sender),
@@ -61,11 +63,13 @@ const SendSchema = z.object({
   content: z.string().min(1),
 })
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  if (!id) return err("Conversa inválida.", 400)
   const session = await getServerSession(authOptions)
   if (!session?.user) return err("Não autenticado.", 401)
 
-  const access = await assertAccess(params.id, session)
+  const access = await assertAccess(id, session)
   if (!access.ok) return err(access.error, access.status)
 
   let body: unknown
@@ -81,14 +85,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const created = await prisma.message.create({
     data: {
-      conversationId: params.id,
+      conversationId: id,
       sender,
       content: parsed.data.content,
     },
   })
 
   await prisma.conversation.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       lastMessageAt: created.createdAt,
       ...(sender === "FARMER" ? { unreadManager: { increment: 1 } } : { unreadFarmer: { increment: 1 } }),
@@ -104,5 +108,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     },
   })
 }
+
 
 
