@@ -2,7 +2,7 @@ import { z } from "zod"
 import { ok, err } from "@/lib/api-response"
 import { prisma } from "@/lib/db"
 import { requireRole } from "@/lib/auth-server"
-import { geminiGenerateText } from "@/lib/gemini"
+import { geminiGenerateTextWithOptions } from "@/lib/gemini"
 import { auditLog } from "@/lib/audit"
 
 const BodySchema = z.object({
@@ -31,6 +31,18 @@ function extractJsonObject(text: string): string | null {
   const last = text.lastIndexOf("}")
   if (first === -1 || last === -1 || last <= first) return null
   return text.slice(first, last + 1)
+}
+
+function fallbackAnalysis(checklist: string[], evidenceCount: number, reason: string) {
+  const items = checklist.map((item) => ({ item, status: "MISSING" as const, reason: "Não foi possível validar automaticamente." }))
+  return {
+    verdict: evidenceCount > 0 ? ("REVIEW" as const) : ("REJECT" as const),
+    confidence: 0.25,
+    checklist: items,
+    missing: checklist,
+    issues: ["Modelo de IA retornou resposta inválida."],
+    notes: reason,
+  }
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -87,7 +99,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const system = [
     "Você é um agente VALIDADOR do Alimapa.",
     "Seu trabalho: analisar provas (fotos/documentos) anexadas a uma requisição e preencher um checklist, apontando faltas e inconsistências.",
-    "Responda SOMENTE com JSON válido, sem markdown.",
+    "Responda SOMENTE com JSON válido, sem markdown, sem texto extra, sem crases.",
     "Use o schema exato:",
     JSON.stringify(
       {
@@ -97,6 +109,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         missing: ["string"],
         issues: ["string"],
         notes: "string",
+      },
+      null,
+      2,
+    ),
+    "Exemplo de resposta válida:",
+    JSON.stringify(
+      {
+        verdict: "REVIEW",
+        confidence: 0.62,
+        checklist: [{ item: "Foto externa do local", status: "MISSING", reason: "Nenhuma imagem externa anexada." }],
+        missing: ["Foto externa do local"],
+        issues: [],
+        notes: "Recomendo solicitar foto externa e documento legível.",
       },
       null,
       2,
@@ -123,23 +148,66 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   let analysisRaw: string
   try {
-    analysisRaw = await geminiGenerateText({ system, user })
+    analysisRaw = await geminiGenerateTextWithOptions(
+      { system, user },
+      { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 900 },
+    )
   } catch (e: any) {
-    return err(e?.message || "Falha ao chamar Gemini", 400)
+    const fb = fallbackAnalysis(checklist, evidence.length, `Falha ao chamar IA: ${e?.message || "erro desconhecido"}`)
+    await auditLog({
+      actorUserId: auth.user.id,
+      action: "request.proofs_analyzed",
+      entityType: "Request",
+      entityId: request.id,
+      details: { agentConfigId: agent.id, verdict: fb.verdict, confidence: fb.confidence, fallback: true },
+    })
+    return ok({ analysis: fb })
   }
 
-  const jsonText = extractJsonObject(analysisRaw)
-  if (!jsonText) return err("IA retornou resposta inválida (sem JSON).", 400)
+  const jsonText = extractJsonObject(analysisRaw) || analysisRaw
+  if (!jsonText) {
+    const fb = fallbackAnalysis(checklist, evidence.length, `IA retornou resposta inválida (vazia).`)
+    await auditLog({
+      actorUserId: auth.user.id,
+      action: "request.proofs_analyzed",
+      entityType: "Request",
+      entityId: request.id,
+      details: { agentConfigId: agent.id, verdict: fb.verdict, confidence: fb.confidence, fallback: true },
+    })
+    return ok({ analysis: fb })
+  }
 
   let analysisObj: any
   try {
     analysisObj = JSON.parse(jsonText)
   } catch {
-    return err("IA retornou JSON inválido.", 400)
+    const fb = fallbackAnalysis(checklist, evidence.length, `IA retornou JSON inválido. Resposta bruta: ${analysisRaw}`.slice(0, 6000))
+    await auditLog({
+      actorUserId: auth.user.id,
+      action: "request.proofs_analyzed",
+      entityType: "Request",
+      entityId: request.id,
+      details: { agentConfigId: agent.id, verdict: fb.verdict, confidence: fb.confidence, fallback: true },
+    })
+    return ok({ analysis: fb })
   }
 
   const validated = AnalysisSchema.safeParse(analysisObj)
-  if (!validated.success) return err("IA retornou JSON fora do schema esperado.", 400)
+  if (!validated.success) {
+    const fb = fallbackAnalysis(
+      checklist,
+      evidence.length,
+      `IA retornou JSON fora do schema esperado. Resposta bruta: ${analysisRaw}`.slice(0, 6000),
+    )
+    await auditLog({
+      actorUserId: auth.user.id,
+      action: "request.proofs_analyzed",
+      entityType: "Request",
+      entityId: request.id,
+      details: { agentConfigId: agent.id, verdict: fb.verdict, confidence: fb.confidence, fallback: true },
+    })
+    return ok({ analysis: fb })
+  }
 
   await auditLog({
     actorUserId: auth.user.id,

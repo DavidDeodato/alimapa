@@ -3,6 +3,12 @@ type GeminiGenerateTextInput = {
   user: string
 }
 
+type GeminiGenerateTextOptions = {
+  responseMimeType?: "text/plain" | "application/json"
+  maxOutputTokens?: number
+  temperature?: number
+}
+
 let cachedModelId: string | null = null
 let cachedAt = 0
 
@@ -50,6 +56,13 @@ async function resolveModelId(apiKey: string): Promise<string> {
 }
 
 export async function geminiGenerateText(input: GeminiGenerateTextInput): Promise<string> {
+  return geminiGenerateTextWithOptions(input, {})
+}
+
+export async function geminiGenerateTextWithOptions(
+  input: GeminiGenerateTextInput,
+  opts: GeminiGenerateTextOptions,
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY não configurada")
@@ -77,16 +90,21 @@ export async function geminiGenerateText(input: GeminiGenerateTextInput): Promis
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          systemInstruction: {
+            role: "system",
+            parts: [{ text: input.system }],
+          },
           contents: [
             {
               role: "user",
-              parts: [{ text: `${input.system}\n\n---\n\n${input.user}` }],
+              parts: [{ text: input.user }],
             },
           ],
           generationConfig: {
-            temperature: 0.4,
+            temperature: typeof opts.temperature === "number" ? opts.temperature : 0.4,
             topP: 0.9,
-            maxOutputTokens: 600,
+            maxOutputTokens: typeof opts.maxOutputTokens === "number" ? opts.maxOutputTokens : 600,
+            ...(opts.responseMimeType ? { responseMimeType: opts.responseMimeType } : {}),
           },
         }),
         signal: controller.signal,

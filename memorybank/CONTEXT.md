@@ -84,4 +84,9 @@ O seed cria usuários demo com senha padrão:
   - `/m/agents` permite criar/editar por tipo (campos de validador aparecem quando selecionado)
   - Orquestrador de propostas usa apenas agentes `NEGOTIATOR` (evita selecionar validador por engano).
 
+- Validação de provas (Gestor): análise com IA + animação
+  - Rota: `POST /api/requests/:id/proofs/analyze` (usa agente `VALIDATOR`)
+  - UI: `/m/requisicoes/:id` tem seletor de validador + animação (etapas + checklist preenchendo) + veredito.
+  - Gemini: `lib/gemini.ts` agora tenta auto-descobrir modelos via `ListModels` quando dá 404 e faz fallback automático.
+
 
