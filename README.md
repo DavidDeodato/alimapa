@@ -13,7 +13,6 @@
 
 ---
 
-&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp; **[>> Accesse a documentação completa AQUI <<](https://jvwandermurem.github.io/Hackathon-Peerseed/)**
 
 ## Membros do Time
 <div align="center">
